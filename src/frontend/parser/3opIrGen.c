@@ -15,129 +15,55 @@ uint32_t numQuads; arena quadPool;
 
 const char* op_names[] = {
     "ADD", "SUB", "MUL", "DIV", "AND", "NOT", "OR", "XOR",
-    "LOAD", "STORE", "MOV", "LOADIMM",
-    "CMP", "JMP", "JMPCND",
-    "CALL", "ARG", "FNCDEF", "RET",
-    "REF", "DEREF",
-    "PUSH", "POP"
+    "LOAD", "STORE", "MOV", "LOADIMM", "CMP", "JMP", "JMPCND",
+    "CALL", "ARG", "FNCDEF", "RET", "REF", "DEREF", "PUSH", "POP"
 };
 
 void printSymbol(symbol s) {
     switch (s.type) {
         case physical:
-            if (s.vReg == 31)      printf("sp");
+            if (s.vReg == 31) printf("sp");
             else if (s.vReg == 30) printf("lr");
             else if (s.vReg == 29) printf("fp");
-            else                   printf("x%d", s.vReg);
+            else printf("x%d", s.vReg);
             break;
-        case local:
-            printf("loc_off(%d)", s.vReg);
-            break;
-        case global:
-            printf("global_id(%d)", s.vReg);
-            break;
-        case arg:
-            printf("arg_%d", s.vReg);
-            break;
-        case literalSymbol:
-            printf("#%d", s.vReg);
-            break;
-        case invalidSymbol:
-            printf("???");
-            break;
-        default:
-            // Assuming default/other values are virtual registers for temps
-            printf("v%d", s.vReg);
-            break;
+        case local: printf("loc_off(%d)", s.vReg); break;
+        case global: printf("global_id(%d)", s.vReg); break;
+        case arg: printf("arg_%d", s.vReg); break;
+        case literalSymbol: printf("#%d", s.vReg); break;
+        case strSymbol: printf("%.*s", s.strLen, s.str); break;
+        case invalidSymbol: printf("???"); break;
+        default: printf("v%d", s.vReg); break;
     }
 }
 
 void printQuad(quad q) {
-    // Print the instruction index for jump-tracking
-
     switch (q.op) {
-        /* --- 3-Operand Arithmetic --- */
-        case ADD: case SUB: case MUL: case DIV:
-        case AND: case OR:  case XOR:
-            printSymbol(q.o1);
-            printf(" = ");
-            printSymbol(q.o2);
-            printf(" %s ", op_names[q.op]);
-            printSymbol(q.o3);
+        case ADD: case SUB: case MUL: case DIV: case AND: case OR: case XOR:
+            printSymbol(q.o1); printf(" = "); printSymbol(q.o2); printf(" %s ", op_names[q.op]); printSymbol(q.o3);
             break;
-
-        /* --- Memory & Assignment --- */
-        case MOV: case LOADIMM: case LOAD: case DEREF: case REf:
-            printSymbol(q.o1);
-            printf(" = %s ", op_names[q.op]);
-            printSymbol(q.o2);
+        case MOV: case LOADIMM: case LOAD:
+            printSymbol(q.o1); printf(" = %s ", op_names[q.op]); printSymbol(q.o2);
             break;
-
+        case REF:
+            printSymbol(q.o1); printf(" = ref "); printSymbol(q.o2);
+            break;
+        case DEREF:
+            printSymbol(q.o1); printf(" = deref "); printSymbol(q.o2);
+            break;
         case STORE:
-            printf("STORE ");
-            printSymbol(q.o2); // Value
-            printf(" -> [");
-            printSymbol(q.o1); // Destination Address
-            printf("]");
+            printf("STORE "); printSymbol(q.o2); printf(" -> ["); printSymbol(q.o1); printf("]");
             break;
-
-        /* --- Control Flow --- */
-        case JMP:
-            printf("JMP LABEL_%d", q.o1.vReg);
-            break;
-
-        case JMPCND:
-            printf("IF ");
-            printSymbol(q.o2);
-            printf(" JMP LABEL_%d", q.o1.vReg);
-            break;
-
-        case CMP:
-            printf("CMP ");
-            printSymbol(q.o1);
-            printf(", ");
-            printSymbol(q.o2);
-            break;
-
-        /* --- Functions --- */
-        case FNCDEF:
-            printf("\n--- FUNC DEF ---");
-            break;
-
-        case RET:
-            printf("RET ");
-            if (q.o1.type != invalidSymbol) printSymbol(q.o1);
-            break;
-
-        case CALL:
-            if (q.o1.type != invalidSymbol) {
-                printSymbol(q.o1);
-                printf(" = ");
-            }
-            printf("CALL ");
-            printSymbol(q.o2);
-            break;
-
-        case ARG:
-            printf("PARAM ");
-            printSymbol(q.o1);
-            break;
-
-        /* --- Stack Operations --- */
-        case PUSH: case POP:
-            printf("%s ", op_names[q.op]);
-            printSymbol(q.o1);
-            break;
-
-        case NOT:
-            printSymbol(q.o1);
-            printf(" = NOT ");
-            printSymbol(q.o2);
-            break;
-
-        default:
-            printf("UNKNOWN_OP(%d)", q.op);
-            break;
+        case JMP: printf("JMP LABEL_%d", q.o1.vReg); break;
+        case JMPCND: printf("IF "); printSymbol(q.o2); printf(" JMP LABEL_%d", q.o1.vReg); break;
+        case CMP: printf("CMP "); printSymbol(q.o1); printf(", "); printSymbol(q.o2); break;
+        case FNCDEF: printf("\nDEF "); printSymbol(q.o1); break;
+        case RET: printf("RET "); break;
+        case CALL: printf("CALL "); printSymbol(q.o1); break;
+        case ARG: printf("PARAM "); printSymbol(q.o1); break;
+        case PUSH: case POP: printf("%s ", op_names[q.op]); printSymbol(q.o1); break;
+        case NOT: printSymbol(q.o1); printf(" = NOT "); printSymbol(q.o2); break;
+        default: printf("UNKNOWN_OP(%d)", q.op); break;
     }
     printf("\n");
 }
@@ -151,14 +77,20 @@ void emitQuad(const quad q){
 int32_t curTempVReg;
 
 const operation operationMap[] = {
-	[opPlus] = ADD, [opMinus] = SUB, [opMul] = MUL, [opDiv] = DIV
+    [opPlus] = ADD, 
+    [opMinus] = SUB, 
+    [opMul] = MUL, 
+    [opDiv] = DIV,
+    [opReference] = REF,
+    [opDereference] = DEREF,
+    [opBitwiseNot] = NOT
 };
 
 uint32_t* fncJmpLabels; uint32_t fncsEncountered;
 
 symbol linearizeNode(node* n, symbol targetReg){
 	switch(n->type){
-		case identifierNode: 
+		case identifierNode:
 		if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = n->symbolData});
 		return n->symbolData;
 		case literalNode:{const symbol tmpLit = (symbol){.type = literalSymbol, .vReg = n->val.val}; if(targetReg.vReg != -1) 
@@ -173,54 +105,55 @@ symbol linearizeNode(node* n, symbol targetReg){
 			case opPlus: case opMinus: case opMul: case opDiv:{
 				const symbol o1 = linearizeNode(n->firstChild, nullSymbol);
 				const symbol o2 = linearizeNode(n->firstChild->sibling, nullSymbol);
-				if(targetReg.vReg == -1) targetReg.vReg = curTempVReg++;
+				if(targetReg.vReg == -1){targetReg.vReg = curTempVReg++; targetReg.type = local;}
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
 				return targetReg;
 			}
 			case opReference: case opDereference: case opBitwiseNot: case opLogicalNot:{
 				const symbol o1 = linearizeNode(n->firstChild, nullSymbol);
-				if(targetReg.vReg == -1) targetReg.vReg = curTempVReg++;
+				if(targetReg.vReg == -1){targetReg.vReg = curTempVReg++; targetReg.type = local;}
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				return targetReg;
 			}
 			case keywordReturn:{
 				if(n->firstChild == NULL) return nullSymbol;
 				const symbol retV = linearizeNode(n->firstChild, (symbol){.type = physical, .vReg = 0});
-				emitQuad((quad){.op = RET, .o1 = retV});
+				emitQuad((quad){.op = RET});
 				return retV;
 			}
 		}
 		break;
 		}
 		case funcDefNode:{
-			emitQuad((quad){.op = FNCDEF});
+			emitQuad((quad){.op = FNCDEF, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
 			fncJmpLabels[fncsEncountered++] = numQuads;
 			node* cn = n->firstChild->sibling; uint32_t numArgs = 0;
-			while(cn != n->lastChild && cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = cn->symbolData, .o2 = (symbol){.type = physical, .vReg = numArgs}});
-				else emitQuad((quad){.op = POP, .o1 = cn->symbolData});
-				numArgs++; cn = cn->sibling;
-			}
 			linearizeNode(n->lastChild, nullSymbol);
 			return nullSymbol;
 		}
 		case funcCallNode:{
-			node* cn = n->firstChild->sibling; uint32_t numArgs = 0;
-			while(cn != n->lastChild && cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o2 = cn->symbolData, .o1 = (symbol){.type = physical, .vReg = numArgs}});
-				else emitQuad((quad){.op = PUSH, .o1 = cn->symbolData});
-				numArgs++; cn = cn->sibling;
-			} emitQuad((quad){.op = CALL});
-			return (symbol){.type = physical, .vReg = 0};
+			node* cn = n->firstChild; uint32_t numArgs = 0;
+			if(cn != NULL) do{
+				if(cn == NULL) break;
+				if(numArgs < 8) linearizeNode(cn, (symbol){.type = physical, .vReg = numArgs});
+				else emitQuad((quad){.op = PUSH, .o1 = linearizeNode(cn, nullSymbol)});
+				numArgs++; if(cn == n->lastChild) break;
+				cn = cn->sibling;
+			}while(true);
+			emitQuad((quad){.op = CALL, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
+			const symbol r0s = (symbol){.type = physical, .vReg = 0};
+			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = r0s});
+			return targetReg.vReg == -1 ? r0s : targetReg;
 		}
 		case declarationNode:{
 			return n->firstChild->symbolData;
 		}
 		case castNode:{
 			node* o1 = n->firstChild;
-			token castType = n->firstChild->sibling->val;
+			token castType = n->val;
 			o1->val = castType;
 			o1->symbolData.varType = castType.type;
+			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = o1->symbolData});
 			return o1->symbolData;
 		}
 		case bodyNode:{

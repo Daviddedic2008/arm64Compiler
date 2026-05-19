@@ -8,10 +8,11 @@ typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode
 }nodeType;
 
-typedef enum symbolType : uint8_t {global, local, arg, physical, literalSymbol, invalidSymbol}symbolType;
+typedef enum symbolType : uint8_t {global, local, arg, physical, literalSymbol, strSymbol, invalidSymbol}symbolType;
 
 typedef struct{
-	symbolType type; tokenType varType; int32_t vReg;
+	symbolType type; tokenType varType; union{int64_t vReg; char* str;};
+	uint8_t strLen;
 }symbol;
 
 typedef struct node{

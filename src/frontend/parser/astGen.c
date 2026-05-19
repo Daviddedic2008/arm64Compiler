@@ -15,7 +15,7 @@ const char* nodeNames[] = {
 };
 
 const char* tokenNames[] = {
-    [opPlus] = "opPlus", [opMinus] = "opMinus", [opIncrement] = "opIncrement",
+    [opPlus] = "opPlus", [opMinus] = "opMinus", [opIncrement] = "opIncrement", [opNegate] = "opNegate",
 	[opDecrement] = "opDecrement", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
     [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
     [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
@@ -123,6 +123,17 @@ node* parseBody(); node* parseExpression(const uint16_t minPrecedence); node* pa
 
 bool withinFunctionDef;
 
+token singleOpMap(token t){
+	switch(t.type){
+		case opMul:
+		t.type = opDereference; break;
+		case opBitwiseAnd:
+		t.type = opReference; break;
+		case opMinus:
+		t.type = opNegate; break;
+	} return t;
+}
+
 node* parseArgument(){
 	token t = eatToken(); node* n;
 	switch(t.type){
@@ -141,7 +152,8 @@ node* parseArgument(){
 		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
 		n = parseExpression(0); expect(parenthesesR); return n;
 		case opMinus: case opMul: case opBitwiseAnd:
-		n = addNode(operatorNode); addChildFromPtr(n, parseExpression(110)); break;
+		n = addNode(operatorNode); t = singleOpMap(t);
+		addChildFromPtr(n, parseExpression(110)); break;
 		default:;
 	}
 	return n->val = t, n;
@@ -246,13 +258,12 @@ node* parseBody(){
 			case keywordInt: case keywordChar: case keywordVoid: uint8_t pd = 0; if(peekAdvToken(1).type == opMul) pd = 1;
 			while(peekAdvToken(pd+2).type == opMul){pd++;} if(peekAdvToken(2+pd).type == parenthesesL && peekAdvToken(1+pd).type == identifier){
 				node* tmp = parseFuncDef();
-				tmp->val.val = pd;
 				addChildFromPtr(ret, tmp); continue;
 			}
 			if(ct.type == keywordVoid) break;
 			default: addChildFromPtr(ret, parseExpression(0));
 		} eatToken();
-	} if(ct.type == curlyBraceR) returnScope();
+	} if(ct.type == curlyBraceR) returnScope(); eatToken();
 	return ret;
 }
 
@@ -260,6 +271,7 @@ node constructTree(tokenArray arr){
 	tokensScanned = 0; stackDepth = 0; scopeDepth = 0;
 	withinFunctionDef = false; numVRegs = 0; numFuncs = 0;
 	srcArr = arr; initPools();
+	
 	node* b = parseBody(); freeArena(symbolPool);
 	return *b;
 }

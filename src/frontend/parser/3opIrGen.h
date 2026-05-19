@@ -7,7 +7,7 @@ typedef enum operation{
 	LOAD, STORE, MOV, LOADIMM,
 	CMP, JMP, JMPCND,
 	CALL, ARG, FNCDEF, RET,
-	REf, DEREF,
+	REF, DEREF,
 	PUSH, POP
 }operation;
 
