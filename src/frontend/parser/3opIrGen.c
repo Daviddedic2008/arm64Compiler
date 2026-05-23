@@ -207,7 +207,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					emitQuad((quad){.op = SETLABEL, .o1 = sl});
 					if(isElse){
 						linearizeNode(n->firstChild->sibling->sibling, nullSymbol, 0);
-						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = flag, .vReg = elseLbl}});
+						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = elseLbl}});
 					} break;
 				}
 				case keywordWhile:{
@@ -215,6 +215,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					const symbol sl = (symbol){.type = label, .vReg = lblLoop};
 					const symbol sf = (symbol){.type = label, .vReg = lblInitial};
 					emitQuad((quad){.op = JMP, .o1 = sf});
+					emitQuad((quad){.op = SETLABEL, .o1 = sl});
 					linearizeNode(n->firstChild->sibling, nullSymbol, 0);
 					emitQuad((quad){.op = SETLABEL, .o1 = sf});
 					const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 1);
