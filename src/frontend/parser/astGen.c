@@ -24,7 +24,7 @@ const char* tokenNames[] = {
     [opBitwiseAnd] = "opBitwiseAnd", [opDereference] = "opDereference",
     [opReference] = "opReference", [opCmpEquals] = "opCmpEquals",
     [opCmpGreater] = "opCmpGreater", [opCmpLess] = "opCmpLess",
-    [opCmpGrEq] = "opCmpGrEq", [opCmpLeEq] = "opCmpLeEq",
+    [opCmpGrEq] = "opCmpGrEq", [opCmpLeEq] = "opCmpLeEq", [opCmpNe] = "opCmpNe",
     [curlyBraceR] = "curlyBraceR", [curlyBraceL] = "curlyBraceL",
     [parenthesesL] = "parenthesesL", [parenthesesR] = "parenthesesR",
     [keywordIf] = "keywordIf", [keywordElse] = "keywordElse",
@@ -192,6 +192,7 @@ token peekOperator(){
 			case opMinus: ret.type = opDecrement; break;
 			case opCmpGreater: ret.type = opCmpGrEq; break;
 			case opCmpLess: ret.type = opCmpLeEq; break;
+			case opBitwiseNot: ret.type = opCmpNe; break;
 		} 
 	} if(ret.type != tc.type) eatToken(); return ret;
 }
@@ -211,8 +212,8 @@ node* parseExpression(const uint16_t minPrecedence){
 node* parseIf(){
 	node* ifNode = addNode(conditionalNode);
 	addChildFromPtr(ifNode, parseExpression(0)); expect(curlyBraceL); deepenScope(); // eat curly to prevent double nested body stuff
-	addChildFromPtr(ifNode, parseBody()); expect(curlyBraceR);
-	if(peekToken().type == keywordElse){ eatToken(); expect(curlyBraceL);
+	addChildFromPtr(ifNode, parseBody());
+	if(peekToken().type == keywordElse){eatToken(); expect(curlyBraceL); deepenScope();
 		addChildFromPtr(ifNode, parseBody());
 	} ifNode->val = (token){.type = keywordIf};
 	return ifNode;

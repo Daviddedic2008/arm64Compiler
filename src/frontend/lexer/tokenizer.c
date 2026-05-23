@@ -29,6 +29,7 @@ int8_t isSingleCharToken(const char c){
 		case '>': return opCmpGreater;
 		case '<': return opCmpLess;
 		case '&': return opBitwiseAnd;
+		case '!': return opBitwiseNot;
 		case '(': return parenthesesL;
 		case ')': return parenthesesR;
 		case '{': return curlyBraceL;

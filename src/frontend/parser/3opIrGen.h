@@ -5,11 +5,15 @@
 typedef enum operation{
 	ADD, SUB, MUL, DIV, AND, NOT, OR, XOR,
 	LOAD, STORE, MOV, LOADIMM,
-	CMP, JMP, JMPCND,
+	CMP, JMP, JMPCND, SETLABEL, READFLAGS,
 	CALL, ARG, FNCDEF, RET,
 	REF, DEREF,
 	PUSH, POP
 }operation;
+
+typedef enum flags{
+	flagEq, flagGt, flagGe, flagLt, flagLe, flagNe
+}flagEnum;
 
 typedef struct{
 	operation op;
