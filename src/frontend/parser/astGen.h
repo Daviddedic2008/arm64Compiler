@@ -5,7 +5,7 @@
 #include "../lexer/tokenizer.h"
 
 typedef enum nodeType : uint8_t{
-	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode
+	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode, statementNode
 }nodeType;
 
 typedef enum symbolType : uint8_t {global, label, flag, local, arg, physical, literalSymbol, strSymbol, invalidSymbol}symbolType;

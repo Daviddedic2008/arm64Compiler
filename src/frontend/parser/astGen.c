@@ -11,7 +11,8 @@ const char* nodeNames[] = {
     [bodyNode] = "bodyNode", [operatorNode] = "operatorNode", 
 	[conditionalNode] = "conditionalNode", [literalNode] = "literalNode", 
 	[identifierNode] = "identifierNode", [declarationNode] = "declarationNode", 
-	[castNode] = "castNode", [funcDefNode] = "funcDefNode", [funcCallNode] = "funcCallNode"
+	[castNode] = "castNode", [funcDefNode] = "funcDefNode", [funcCallNode] = "funcCallNode",
+	[statementNode] = "statementNode"
 };
 
 const char* tokenNames[] = {
@@ -151,7 +152,7 @@ node* parseArgument(){
 		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
 		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
 		n = parseExpression(0); expect(parenthesesR); return n;
-		case opMinus: case opMul: case opBitwiseAnd:
+		case opMinus: case opMul: case opBitwiseAnd: case opBitwiseNot:
 		n = addNode(operatorNode); t = singleOpMap(t);
 		addChildFromPtr(n, parseExpression(110)); break;
 		default:;
@@ -250,9 +251,9 @@ node* parseBody(){
 	while(ct = peekToken(), !(ct.type == nullToken | ct.type == curlyBraceR)){
 		switch(ct.type){
 			case keywordContinue: case keywordBreak: case keywordReturn:
-			node* statementNode = addNode(operatorNode); statementNode->val = ct; eatToken();
-			if(peekToken().type != endStatement) addChildFromPtr(statementNode, parseExpression(0));
-			addChildFromPtr(ret, statementNode); break;
+			node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
+			if(peekToken().type != endStatement) addChildFromPtr(statNode, parseExpression(0));
+			addChildFromPtr(ret, statNode); break;
 			case curlyBraceL: eatToken(); deepenScope(); addChildFromPtr(ret, parseBody()); continue;
 			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
 			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
