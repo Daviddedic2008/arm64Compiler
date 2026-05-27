@@ -194,8 +194,10 @@ token peekOperator(){
 			case opCmpGreater: ret.type = opCmpGrEq; break;
 			case opCmpLess: ret.type = opCmpLeEq; break;
 			case opBitwiseNot: ret.type = opCmpNe; break;
-		} 
-	} if(ret.type != tc.type) eatToken(); return ret;
+		} break;
+		case opBitwiseAnd:
+		if(ret.type == opBitwiseAnd) ret.type = opLogicalAnd; break;
+	} if(ret.type != tc.type) eatToken(); *srcArr.tokens = ret; return ret;
 }
 
 node* parseExpression(const uint16_t minPrecedence){
