@@ -197,6 +197,8 @@ token peekOperator(){
 		} break;
 		case opBitwiseAnd:
 		if(ret.type == opBitwiseAnd) ret.type = opLogicalAnd; break;
+		case opBitwiseOr:
+		if(ret.type == opBitwiseOr) ret.type = opLogicalOr; break;
 	} if(ret.type != tc.type) eatToken(); *srcArr.tokens = ret; return ret;
 }
 
