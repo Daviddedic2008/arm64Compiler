@@ -55,7 +55,7 @@ void printQuad(quad q) {
             printf("STORE "); printSymbol(q.o2); printf(" -> ["); printSymbol(q.o1); printf("]");
             break;
         case JMP: printf("JMP "); printSymbol(q.o1); break;
-        case JMPCND: printf("IF "); printSymbol(q.o2); printf(" JMP LABEL_%d", q.o1.vReg); break;
+        case JMPCND: printf("IF "); printSymbol(q.o2); printf(" JMP label_%d", q.o1.vReg); break;
         case CMP: printf("CMP "); printSymbol(q.o1); printf(", "); printSymbol(q.o2); break;
 		case SETLABEL: printSymbol(q.o1); printf(":"); break;
 		case READFLAGS: printSymbol(q.o1); printf(" = check "); printSymbol(q.o2); break;
@@ -102,19 +102,20 @@ int32_t curStartLbl, curEndLbl;
 symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 	switch(n->type){
 		case identifierNode:
-		if(targetReg.vReg != -1 && targetReg.type != label) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = n->symbolData});
 		if(isConditional){
 			emitQuad((quad){.op = CMP, .o1 = n->symbolData, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
+		else if(targetReg.vReg != -1 && targetReg.type != label){emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = n->symbolData}); n->symbolData = targetReg;}
 		return n->symbolData;
-		case literalNode:{const symbol tmpLit = (symbol){.type = literalSymbol, .vReg = n->val.val};
+		case literalNode:{symbol tmpLit = (symbol){.type = literalSymbol, .vReg = n->val.val};
 		if(isConditional){
 			emitQuad((quad){.op = CMP, .o1 = tmpLit, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
-		else if(targetReg.vReg != -1 && targetReg.type != label) 
-		emitQuad((quad){.op = LOADIMM, .o1 = targetReg, .o2 = tmpLit}); 
+		else if(targetReg.vReg != -1 && targetReg.type != label){
+		emitQuad((quad){.op = LOADIMM, .o1 = targetReg, .o2 = tmpLit}); tmpLit = targetReg;
+		}
 		return tmpLit;
 		}
 		case operatorNode:{switch(n->val.type){
@@ -197,20 +198,33 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 		}
 		case funcDefNode:{
 			emitQuad((quad){.op = FNCDEF, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
+			
 			fncJmpLabels[fncsEncountered++] = numQuads;
 			node* cn = n->firstChild->sibling; uint32_t numArgs = 0;
+			while(cn != n->lastChild && cn != NULL){
+				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = linearizeNode(cn, nullSymbol, 0), .o2 = (symbol){.type = physical, .vReg = numArgs}});
+				else emitQuad((quad){.op = POP, .o1 = linearizeNode(cn, nullSymbol, 0)});
+				numArgs++; cn = cn->sibling;
+			}
 			linearizeNode(n->lastChild, nullSymbol, 0);
 			return nullSymbol;
 		}
 		case funcCallNode:{
 			node* cn = n->firstChild; uint32_t numArgs = 0;
-			if(cn != NULL) do{
-				if(cn == NULL) break;
-				if(numArgs < 8) linearizeNode(cn, (symbol){.type = physical, .vReg = numArgs}, 0);
-				else emitQuad((quad){.op = PUSH, .o1 = linearizeNode(cn, nullSymbol, 0)});
+			while(cn != NULL){
+				if(cn->type != literalNode && cn->type != identifierNode) cn->symbolData = linearizeNode(cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0);
+				else{
+					cn->symbolData = linearizeNode(cn, nullSymbol, 0);
+				}
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
-			}while(true);
+			}cn = n->firstChild; numArgs = 0;
+			while(cn != NULL){
+				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, cn->symbolData});
+				else emitQuad((quad){.op = PUSH, .o1 = cn->symbolData});
+				numArgs++; if(cn == n->lastChild) break;
+				cn = cn->sibling;
+			}
 			emitQuad((quad){.op = CALL, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
 			const symbol r0s = (symbol){.type = physical, .vReg = 0};
 			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = r0s});
