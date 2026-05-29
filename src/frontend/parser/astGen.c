@@ -152,7 +152,7 @@ node* parseArgument(){
 		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
 		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
 		n = parseExpression(0); expect(parenthesesR); return n;
-		case opMinus: case opMul: case opBitwiseAnd: case opBitwiseNot:
+		case opMinus: case opMul: case opBitwiseAnd: case opBitwiseNot: case opLogicalNot:
 		n = addNode(operatorNode); t = singleOpMap(t);
 		addChildFromPtr(n, parseExpression(110)); break;
 		default:;

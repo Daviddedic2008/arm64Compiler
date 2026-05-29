@@ -86,13 +86,29 @@ const operation operationMap[] = {
     [opDiv] = DIV,
     [opReference] = REF,
     [opDereference] = DEREF,
-    [opBitwiseNot] = NOT
+    [opBitwiseNot] = NOT,
+	[opLogicalNot] = NOT
 }; flagEnum flags[] = {flagNe, flagLe, flagGe, flagLt, flagGt, flagEq};
 
-flagEnum flagsR[] = {flagEq, flagGt, flagLt, flagGe, flagLe, flagNe};
+flagEnum flagsR[] = {
+    [flagEq] = flagNe,
+    [flagNe] = flagEq,
+    [flagLt] = flagGe,
+    [flagGe] = flagLt,
+    [flagGt] = flagLe,
+    [flagLe] = flagGt
+};
+
+const flagEnum cmpFlagMap[] = {
+    [opCmpEquals]   = flagNe,
+    [opCmpGreater]  = flagLe,
+    [opCmpLess]     = flagGe,
+    [opCmpGrEq]     = flagLt,
+    [opCmpLeEq]     = flagGt
+};
 
 symbol reverseFlag(symbol s){
-	return (s.vReg = flagsR[s.vReg], s);
+	s.vReg = flagsR[s.vReg]; return s;
 }
 
 uint32_t* fncJmpLabels; uint32_t fncsEncountered;
@@ -142,14 +158,16 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 0);
 				const symbol o2 = linearizeNode(n->firstChild->sibling, nullSymbol, 0);
 				emitQuad((quad){.op = CMP, .o1 = o1, .o2 = o2});
-				const symbol flagSmbl = (symbol){.type = flag, .vReg = flags[n->val.type - opCmpEquals]};
-				if(targetReg.vReg != -1 && targetReg.type != label){
+				const symbol flagSmbl = (symbol){.type = flag, .vReg = cmpFlagMap[n->val.type]};
+				if(targetReg.type != label && !isConditional){
+					if(targetReg.vReg == -1){targetReg.vReg = curTempVReg++; targetReg.type = local;}
 					emitQuad((quad){.op = READFLAGS, .o1 = targetReg, .o2 = flagSmbl});
 				}
 				return isConditional ? flagSmbl : targetReg;
 			}
-			case opReference: case opDereference: case opBitwiseNot: case opLogicalNot: case opNegate:{
-				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 0);
+			case opReference: case opDereference: case opBitwiseNot: case opNegate: case opLogicalNot:{
+				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0);
+				if(n->val.type == opLogicalNot && o1.type == flag) return reverseFlag(o1);
 				if(targetReg.vReg == -1 && targetReg.type != label){targetReg.vReg = curTempVReg++; targetReg.type = local;}
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				return targetReg;
