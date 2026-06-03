@@ -20,7 +20,7 @@ const char* tokenNames[] = {
 	[opDecrement] = "opDecrement", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
     [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
     [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
-    [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr",
+    [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr", [opBitwiseXor] = "opBitwiseXor",
     [opShiftRight] = "opShiftRight", [opShiftLeft] = "opShiftLeft",
     [opBitwiseAnd] = "opBitwiseAnd", [opDereference] = "opDereference",
     [opReference] = "opReference", [opCmpEquals] = "opCmpEquals",
@@ -33,7 +33,7 @@ const char* tokenNames[] = {
     [keywordChar] = "keywordChar", [keywordIntPtr] = "keywordIntPtr", [keywordVoidPtr] = "keywordVoidPtr",
     [endStatement] = "endStatement", [identifier] = "identifier",
     [literal] = "literal", [keywordReturn] = "keywordReturn", [keywordBreak] = "keywordBreak",
-	[keywordContinue] = "keywordContinue", [keywordVoid] = "keywordVoid", [nullToken] = "nullToken"
+	[keywordContinue] = "keywordContinue", [keywordVoid] = "keywordVoid", [nullToken] = "nullToken", [squareBraceL]  = "squareBraceL", [squareBraceR] = "squareBraceL"
 };
 
 const char* symbolNames[] = {
@@ -55,7 +55,7 @@ uint32_t getUsedVRegs(){return numVRegs;}
 void deepenScope(){scopeDepth++;}
 
 typedef struct{
-	symbolType type; tokenType varType; int32_t vReg;
+	symbolType type; tokenType varType; int32_t vReg; uint32_t szArr;
 	token name; uint32_t scopeDepth;
 }symbolB;
 
@@ -145,7 +145,8 @@ node* parseArgument(){
 		} break;
 		case keywordInt: case keywordChar:
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
-		n = addNode(declarationNode); n->val = t; const uint8_t st = t.type; t = eatToken(); const uint8_t sz = st == keywordChar ? 1 : 4; 
+		n = addNode(declarationNode);
+		n->val = t; const uint8_t st = t.type; t = eatToken(); const uint8_t sz = st == keywordChar ? 1 : 4; 
 		const symbolB* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
 		t.val = sz; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = (symbol){.type = s->type, .varType = st, .vReg = s->vReg}}); return n;
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
@@ -168,7 +169,7 @@ uint16_t getPrecedence(const uint8_t t) {
         case opCmpGreater: case opCmpLess: case opCmpGrEq: case opCmpLeEq: return 70;
         case opCmpEquals: return 60;
         case opBitwiseAnd: return 50;
-        case opBitwiseOr: return 40;
+        case opBitwiseOr: case opBitwiseXor: return 40;
         case opLogicalAnd: return 30;
         case opLogicalOr: return 20;
         case opEqual: case opIncrement: case opDecrement: return 10;
@@ -285,7 +286,7 @@ node constructTree(tokenArray arr){
 void printTree(node* n, int depth) {
     if (!n) return;
     for (int i = 0; i < depth; i++) printf("  ");
-    const char* nName = (n->type <= declarationNode) ? nodeNames[n->type] : "UNKNOWN_NODE";
+    const char* nName = (n->type <= statementNode) ? nodeNames[n->type] : "UNKNOWN_NODE";
     const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
 
     printf("[%s | %s", nName, tName);

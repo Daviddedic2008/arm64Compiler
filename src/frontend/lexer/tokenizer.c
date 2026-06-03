@@ -30,12 +30,15 @@ int8_t isSingleCharToken(const char c){
 		case '<': return opCmpLess;
 		case '&': return opBitwiseAnd;
 		case '|': return opBitwiseOr;
+		case '^': return opBitwiseXor;
 		case '~': return opBitwiseNot;
 		case '!': return opLogicalNot;
 		case '(': return parenthesesL;
 		case ')': return parenthesesR;
 		case '{': return curlyBraceL;
 		case '}': return curlyBraceR;
+		case '[': return squareBraceL;
+		case ']': return squareBraceR;
 		case ';': case ',': return endStatement;
 	} return -1;
 }

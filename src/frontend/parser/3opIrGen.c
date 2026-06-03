@@ -23,6 +23,10 @@ const char* flag_names[] = {
 	[flagEq] = "EQ", [flagGt] = "GT", [flagGe] = "GE", [flagLt] = "LT", [flagLe] = "LE", [flagNe] = "NE"
 };
 
+const char* typeNames[] = {
+	[keywordInt] = "INT", [keywordChar] = "CHAR", [keywordIntPtr] = "INT*", [keywordCharPtr] = "CHAR*"
+};
+
 void printSymbol(symbol s) {
     switch (s.type) {
         case physical:
@@ -31,9 +35,9 @@ void printSymbol(symbol s) {
             else if (s.vReg == 29) printf("fp");
             else printf("x%d", s.vReg);
             break;
-        case local: printf("loc_off(%d)", s.vReg); break;
-        case global: printf("global_id(%d)", s.vReg); break;
-        case arg: printf("arg_%d", s.vReg); break;
+        case local: printf("loc_off(%d)_%s", s.vReg, typeNames[s.varType]); break;
+        case global: printf("global_id(%d)_%s", s.vReg, typeNames[s.varType]); break;
+        case arg: printf("arg_%d_%s", s.vReg, typeNames[s.varType]); break;
         case literalSymbol: printf("#%d", s.vReg); break;
         case strSymbol: printf("%.*s", s.strLen, s.str); break;
 		case label: printf("label_%d", s.vReg); break;
@@ -83,10 +87,13 @@ const operation operationMap[] = {
     [opMinus] = SUB,
 	[opNegate] = NEG,
     [opMul] = MUL, 
-    [opDiv] = DIV,
+    [opDiv] = DIV,	
     [opReference] = REF,
     [opDereference] = DEREF,
     [opBitwiseNot] = NOT,
+	[opBitwiseAnd] = AND,
+	[opBitwiseOr] = OR,
+	[opBitwiseXor] = XOR,
 	[opLogicalNot] = NOT
 }; flagEnum flags[] = {flagNe, flagLe, flagGe, flagLt, flagGt, flagEq};
 
@@ -115,7 +122,23 @@ uint32_t* fncJmpLabels; uint32_t fncsEncountered;
 
 int32_t curStartLbl, curEndLbl;
 
-symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
+typedef enum{rvalue, lvalue}memType;
+
+typedef struct{
+	node* n; symbol targetReg;
+	bool isConditional; memType valType;
+}linData;
+
+tokenType combineTypes(const tokenType t1, const tokenType t2){
+	if(t1 == literal) return t2; if(t2 == literal) return t1;
+	if(t1 == keywordIntPtr || t2 == keywordIntPtr) return keywordIntPtr;
+	if(t1 == keywordCharPtr || t2 == keywordCharPtr) return keywordCharPtr;
+	if(t1 == keywordInt || t2 == keywordInt) return keywordInt;
+	return keywordChar;
+}
+
+symbol linearizeNode(const linData dat){
+	node* n = dat.n; symbol targetReg = dat.targetReg; bool isConditional = dat.isConditional; memType valType = dat.valType;
 	switch(n->type){
 		case identifierNode:
 		if(isConditional){
@@ -136,17 +159,18 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 		}
 		case operatorNode:{switch(n->val.type){
 			case opEqual:
-			const symbol resultReg = linearizeNode(n->firstChild, nullSymbol, 0);
-			linearizeNode(n->firstChild->sibling, resultReg, 0);
+			symbol resultReg = linearizeNode((linData){n->firstChild, nullSymbol, 0, lvalue});
+			linearizeNode((linData){n->firstChild->sibling, resultReg, 0, rvalue});
 			if(isConditional){
 				emitQuad((quad){.op = CMP, .o1 = resultReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 				return (symbol){.type = flag, .vReg = flagEq};
 			}
 			return resultReg;
-			case opPlus: case opMinus: case opMul: case opDiv:{
-				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 0);
-				const symbol o2 = linearizeNode(n->firstChild->sibling, nullSymbol, 0);
+			case opPlus: case opMinus: case opMul: case opDiv: case opBitwiseXor: case opBitwiseAnd: case opBitwiseOr:{
+				const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				if(targetReg.vReg == -1 && targetReg.type != label){targetReg.vReg = curTempVReg++; targetReg.type = local;}
+				targetReg.varType = combineTypes(o1.varType, o2.varType);
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
 				if(isConditional){
 					emitQuad((quad){.op = CMP, .o1 = targetReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
@@ -155,8 +179,8 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 				return targetReg;
 			}
 			case opCmpEquals: case opCmpGreater: case opCmpLess: case opCmpGrEq: case opCmpLeEq:{
-				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 0);
-				const symbol o2 = linearizeNode(n->firstChild->sibling, nullSymbol, 0);
+				const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				emitQuad((quad){.op = CMP, .o1 = o1, .o2 = o2});
 				const symbol flagSmbl = (symbol){.type = flag, .vReg = cmpFlagMap[n->val.type]};
 				if(targetReg.type != label && !isConditional){
@@ -166,7 +190,10 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 				return isConditional ? flagSmbl : targetReg;
 			}
 			case opReference: case opDereference: case opBitwiseNot: case opNegate: case opLogicalNot:{
-				const symbol o1 = linearizeNode(n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0);
+				const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0});
+				if(valType == lvalue && n->val.type == opDereference){
+					
+				}
 				if(n->val.type == opLogicalNot && o1.type == flag) return reverseFlag(o1);
 				if(targetReg.vReg == -1 && targetReg.type != label){targetReg.vReg = curTempVReg++; targetReg.type = local;}
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
@@ -177,10 +204,10 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					resultReg = (targetReg.vReg == -1 && targetReg.type != label) ? (symbol){.type = local, .vReg = curTempVReg++} : targetReg;
 					emitQuad((quad){.op = LOADIMM, .o1 = resultReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 				}
-				const symbol o1 = linearizeNode(n->firstChild, targetReg, 1);
+				const symbol o1 = linearizeNode((linData){n->firstChild, targetReg, 1});
 				const symbol labelSkip = targetReg.type == label ? targetReg : (o1.type == label ? o1 : (symbol){.type = label, .vReg = numLabels++});
 				if(o1.type != label) emitQuad((quad){.op = JMPCND, .o1 = labelSkip, .o2 = o1});
-				const symbol o2 = linearizeNode(n->firstChild->sibling, targetReg, 1);
+				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, targetReg, 1});
 				if(o2.type != label) emitQuad((quad){.op = JMPCND, .o1 = labelSkip, .o2 = o2});
 				if(!isConditional){
 					emitQuad((quad){.op = LOADIMM, .o1 = resultReg, .o2 = (symbol){.type = literalSymbol, .vReg = 1}});
@@ -194,10 +221,10 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					emitQuad((quad){.op = LOADIMM, .o1 = resultReg, .o2 = (symbol){.type = literalSymbol, .vReg = 1}});
 				}
 				const symbol labelTrue = (symbol){.type = label, .vReg = numLabels++};
-				const symbol o1 = linearizeNode(n->firstChild, targetReg, 1);
+				const symbol o1 = linearizeNode((linData){n->firstChild, targetReg, 1});
 				const symbol labelSkip = targetReg.type == label ? targetReg : (o1.type == label ? o1 : (symbol){.type = label, .vReg = numLabels++});
 				if(o1.type != label) emitQuad((quad){.op = JMPCND, .o1 = labelTrue, reverseFlag(o1)});
-				const symbol o2 = linearizeNode(n->firstChild->sibling, targetReg, 1);
+				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, targetReg, 1});
 				if(o2.type != label) emitQuad((quad){.op = JMPCND, .o1 = labelTrue, reverseFlag(o2)});
 				if(!isConditional){
 					emitQuad((quad){.op = LOADIMM, .o1 = resultReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
@@ -207,7 +234,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 			}
 			case keywordReturn:{
 				if(n->firstChild == NULL) return nullSymbol;
-				const symbol retV = linearizeNode(n->firstChild, (symbol){.type = physical, .vReg = 0}, 0);
+				const symbol retV = linearizeNode((linData){n->firstChild, (symbol){.type = physical, .vReg = 0}, 0});
 				emitQuad((quad){.op = RET});
 				return retV;
 			}
@@ -220,19 +247,19 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 			fncJmpLabels[fncsEncountered++] = numQuads;
 			node* cn = n->firstChild->sibling; uint32_t numArgs = 0;
 			while(cn != n->lastChild && cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = linearizeNode(cn, nullSymbol, 0), .o2 = (symbol){.type = physical, .vReg = numArgs}});
-				else emitQuad((quad){.op = POP, .o1 = linearizeNode(cn, nullSymbol, 0)});
+				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = linearizeNode((linData){cn, nullSymbol, 0}), .o2 = (symbol){.type = physical, .vReg = numArgs}});
+				else emitQuad((quad){.op = POP, .o1 = linearizeNode((linData){cn, nullSymbol, 0})});
 				numArgs++; cn = cn->sibling;
 			}
-			linearizeNode(n->lastChild, nullSymbol, 0);
+			linearizeNode((linData){n->lastChild, nullSymbol, 0});
 			return nullSymbol;
 		}
 		case funcCallNode:{
 			node* cn = n->firstChild; uint32_t numArgs = 0;
 			while(cn != NULL){
-				if(cn->type != literalNode && cn->type != identifierNode) cn->symbolData = linearizeNode(cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0);
+				if(cn->type != literalNode && cn->type != identifierNode) cn->symbolData = linearizeNode((linData){cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0});
 				else{
-					cn->symbolData = linearizeNode(cn, nullSymbol, 0);
+					cn->symbolData = linearizeNode((linData){cn, nullSymbol, 0});
 				}
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
@@ -257,27 +284,27 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 			return n->firstChild->symbolData;
 		}
 		case castNode:{
-			node* o1 = n->firstChild;
+			node* o1n = n->firstChild;
+			symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 			const token castType = n->val;
-			o1->val = castType;
-			o1->symbolData.varType = castType.type;
-			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = o1->symbolData});
+			o1.varType = castType.type;
+			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = o1});
 			if(isConditional){
-				emitQuad((quad){.op = CMP, .o1 = o1->symbolData, .o2 = (symbol){.type = literal, .vReg = 0}});
+				emitQuad((quad){.op = CMP, .o1 = o1, .o2 = (symbol){.type = literal, .vReg = 0}});
 				return (symbol){.type = flag, .vReg = flagEq};
 			}
-			return o1->symbolData;
+			return o1;
 		}
 		case conditionalNode:{
 			switch(n->val.type){
 				case keywordIf:{
 					const uint32_t lblUsed = numLabels++; const symbol sl = (symbol){.type = label, .vReg = lblUsed};
-					const symbol o1 = linearizeNode(n->firstChild, nullSymbol, 1);
+					const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 1});
 					switch(o1.type){
 						case flag: emitQuad((quad){.op = JMPCND, sl, o1}); break;
 						case label: break;
 					}
-					linearizeNode(n->firstChild->sibling, nullSymbol, 0);
+					linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 					const bool isElse = n->firstChild->sibling != n->lastChild;
 					uint32_t elseLbl;
 					if(isElse){
@@ -286,7 +313,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					}
 					emitQuad((quad){.op = SETLABEL, .o1 = o1.type == label ? o1 : sl});
 					if(isElse){
-						linearizeNode(n->firstChild->sibling->sibling, nullSymbol, 0);
+						linearizeNode((linData){n->firstChild->sibling->sibling, nullSymbol, 0});
 						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = elseLbl}});
 					} break;
 				}
@@ -298,9 +325,9 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 					const symbol sb = (symbol){.type = label, .vReg = lblBreak};
 					emitQuad((quad){.op = JMP, .o1 = sf});
 					emitQuad((quad){.op = SETLABEL, .o1 = sl});
-					linearizeNode(n->firstChild->sibling, nullSymbol, 0);
+					linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 					emitQuad((quad){.op = SETLABEL, .o1 = sf});
-					const symbol o1 = reverseFlag(linearizeNode(n->firstChild, sb, 1));
+					const symbol o1 = reverseFlag(linearizeNode((linData){n->firstChild, sb, 1}));
 					if(o1.type == flag) emitQuad((quad){.op = JMPCND, sl, o1});
 					else emitQuad((quad){.op = JMP, .o1 = sl});
 					emitQuad((quad){.op = SETLABEL, sb});
@@ -314,7 +341,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 			switch(n->val.type){
 				case keywordReturn:{
 					if(n->firstChild != NULL){
-						const symbol r1 = linearizeNode(n->firstChild, nullSymbol, 0);
+						const symbol r1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 						emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = 0}, r1});
 					} emitQuad((quad){.op = RET});
 					break;
@@ -334,7 +361,7 @@ symbol linearizeNode(node* n, symbol targetReg, bool isConditional){
 			node* cn = n->firstChild;
 			if(cn != NULL) do{
 				if(cn == NULL) break;
-				linearizeNode(cn, nullSymbol, 0);
+				linearizeNode((linData){cn, nullSymbol, 0});
 				if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}while(true);
@@ -349,6 +376,6 @@ quad* linearizeAST(const node* baseNode){
 	fncJmpLabels = malloc(sizeof(uint32_t) * getNumFuncs()); numQuads = 0;
 	quadPool = newArena(sizeof(quad) * maxQuads); numLabels = 0;
 	curTempVReg = getUsedVRegs(); fncsEncountered = 0;
-	linearizeNode(baseNode, nullSymbol, 0);
+	linearizeNode((linData){baseNode, nullSymbol, 0});
 	return quadPool.pool;
 }
