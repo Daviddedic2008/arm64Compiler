@@ -74,7 +74,7 @@ symbol getSymbol(const token t){
 	for(int32_t si = symbolPool.used/sizeof(symbolB)-1; si >= 0; si--){
 		const symbolB ts = ((symbolB*)symbolPool.pool)[si];
 		if(t.len == ts.name.len && !strncmp(ts.name.str, t.str, t.len)){
-			return (symbol){.varType = ts.varType, .type = ts.type, .vReg = ts.vReg};
+			return (symbol){.varType = ts.varType, .type = ts.type, .vReg = ts.vReg, .szArr = ts.szArr};
 		}
 	}return (symbol){.type = invalidSymbol};
 }
@@ -147,8 +147,9 @@ node* parseArgument(){
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
 		n = addNode(declarationNode);
 		n->val = t; const uint8_t st = t.type; t = eatToken(); const uint8_t sz = st == keywordChar ? 1 : 4; 
-		const symbolB* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
-		t.val = sz; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = (symbol){.type = s->type, .varType = st, .vReg = s->vReg}}); return n;
+		symbolB* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
+		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
+		addChild(n, (node){.type = identifierNode, .val = t, .symbolData = (symbol){.type = s->type, .varType = st, .vReg = s->vReg, .szArr = as}}); return n;
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
 		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
 		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
@@ -173,6 +174,7 @@ uint16_t getPrecedence(const uint8_t t) {
         case opLogicalAnd: return 30;
         case opLogicalOr: return 20;
         case opEqual: case opIncrement: case opDecrement: return 10;
+		case squareBraceL: return 110;
         default: return 0;
     }
 }
@@ -207,6 +209,7 @@ node* parseExpression(const uint16_t minPrecedence){
 	node* left = parseArgument();
 	while(1){
 		token op = peekOperator(); const uint16_t p = getPrecedence(op.type);
+		if(op.type == squareBraceR){eatToken();continue;}
 		if(p < minPrecedence || !p) break;
 		eatToken();
 		node* right = parseExpression(p+1);
@@ -290,6 +293,7 @@ void printTree(node* n, int depth) {
     const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
 
     printf("[%s | %s", nName, tName);
+	if(n->type == identifierNode && n->symbolData.szArr != 0) printf(" | %d elements", n->symbolData.szArr);
 	
 	if(n->type == identifierNode) printf(" | %s", symbolNames[n->symbolData.type]); 
 
