@@ -11,7 +11,7 @@ typedef enum nodeType : uint8_t{
 typedef enum symbolType : uint8_t {global, label, flag, local, arg, physical, literalSymbol, strSymbol, frameSymbol, invalidSymbol}symbolType;
 
 typedef struct{
-	symbolType type; tokenType varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
+	symbolType type; token varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
 	uint8_t strLen; bool isAddr;
 }symbol;
 

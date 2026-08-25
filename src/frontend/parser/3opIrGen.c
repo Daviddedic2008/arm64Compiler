@@ -27,6 +27,11 @@ const char* typeNames[] = {
 	[keywordInt] = "INT", [keywordChar] = "CHAR", [keywordIntPtr] = "PTR_INT", [keywordCharPtr] = "PTR_CHAR"
 };
 
+void printType(const token t){
+	printf("%s", typeNames[t.type]);
+	if(t.type == keywordIntPtr || t.type == keywordCharPtr) printf("_depth{%d}", t.val);
+}
+
 void printSymbol(symbol s) {
     switch (s.type) {
         case physical:
@@ -35,9 +40,9 @@ void printSymbol(symbol s) {
             else if (s.vReg == 29) printf("fp");
             else printf("x%d", s.vReg);
             break;
-        case local: printf("loc_off(%d)_%s", s.vReg, typeNames[s.varType]); goto dop;
-        case global: printf("global_id(%d)_%s", s.vReg, typeNames[s.varType]); goto dop;
-        case arg: printf("arg_%d_%s", s.vReg, typeNames[s.varType]); goto dop;
+        case local: printf("loc_off(%d)_", s.vReg); printType(s.varType); goto dop;
+        case global: printf("global_id(%d)_%s", s.vReg); printType(s.varType); goto dop;
+        case arg: printf("arg_%d_", s.vReg); printType(s.varType); goto dop;
 		dop:
 		if(s.szArr) printf("[%d]", s.szArr);
 		break;
@@ -145,8 +150,8 @@ frameDescriptor* newDescriptor(){
 
 symbol newVReg(const tokenType varType){
 	symbol nr; if(fncsEncountered)
-		nr = (symbol){.type = local, .vReg = curTempVReg++, .varType = varType};
-	else nr = (symbol){.type = global, .vReg = curTempVReg++, .varType = varType};
+		nr = (symbol){.type = local, .vReg = curTempVReg++, .varType = (token){.type = varType}};
+	else nr = (symbol){.type = global, .vReg = curTempVReg++, .varType = (token){.type = varType}};
 	writeElement(&frameDescriptorVregs, &nr, sizeof(symbol));
 	if(curDescriptor != NULL) curDescriptor->numVars++;
 	return nr;
@@ -167,12 +172,11 @@ typedef struct{
 	bool isConditional; memType valType;
 }linData;
 
-tokenType combineTypes(const tokenType t1, const tokenType t2){
-	if(t1 == literal) return t2; if(t2 == literal) return t1;
-	if(t1 == keywordIntPtr || t2 == keywordIntPtr) return keywordIntPtr;
-	if(t1 == keywordCharPtr || t2 == keywordCharPtr) return keywordCharPtr;
-	if(t1 == keywordInt || t2 == keywordInt) return keywordInt;
-	return keywordChar;
+token combineTypes(const token t1, const token t2){
+	if(t1.type == literal || t2.type == literal) return (token){.type = literal};
+	if(t1.type == keywordIntPtr || t1.type == keywordCharPtr) return t1; if(t2.type == keywordIntPtr || t2.type == keywordCharPtr) return t2;
+	if(t1.type == keywordInt || t2.type == keywordInt) return (token){.type = keywordInt};
+	return (token){.type = keywordChar};
 }
 
 void printQuads(){
@@ -191,7 +195,7 @@ symbol linearizeNode(const linData dat){
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
 		else if(targetReg.vReg != -1 && targetReg.type != label){
-			if(secondaryTarget.isAddr){
+			if(targetReg.isAddr){
 				emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = n->symbolData});
 			} else{emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = n->symbolData}); n->symbolData = targetReg;}
 		}
@@ -202,7 +206,7 @@ symbol linearizeNode(const linData dat){
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
 		else if(targetReg.vReg != -1 && targetReg.type != label){
-			if(secondaryTarget.isAddr){
+			if(targetReg.isAddr){
 					emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = tmpLit});
 			} else {emitQuad((quad){.op = LOADIMM, .o1 = targetReg, .o2 = tmpLit}); tmpLit = targetReg;}
 		}
@@ -220,7 +224,7 @@ symbol linearizeNode(const linData dat){
 			case opPlus: case opMinus: case opMul: case opDiv: case opBitwiseXor: case opBitwiseAnd: case opBitwiseOr:{
 				const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
-				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg = newVReg(keywordInt);}
+				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg = newVReg(targetReg.varType.type == keywordIntPtr ? keywordInt : keywordChar);}
 				targetReg.varType = combineTypes(o1.varType, o2.varType);
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
 				if(isConditional){
@@ -262,15 +266,16 @@ symbol linearizeNode(const linData dat){
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 				const symbol o2 = linearizeNode((linData){n->lastChild, nullSymbol, 0});
 				symbol tmp;
-				if(o1.varType != keywordChar && (o1.szArr || o1.varType == keywordIntPtr)){
+				if(o1.varType.type != keywordChar && (o1.szArr || o1.varType.type == keywordIntPtr || o1.varType.type == keywordCharPtr)){
 					if(o2.type == literalSymbol) tmp = (symbol){.type = literalSymbol, .vReg = o2.vReg * 4};
 					else{
 						tmp = newVReg(keywordInt);
 						emitQuad((quad){.op = MUL, .o1 = tmp, .o2 = o2, .o3 = (symbol){.type = literalSymbol, .vReg = 4}});
 					}
 				}
-				else tmp = o2;
-				symbol tmp2 = (symbol){.type = local, .vReg = curTempVReg++, .varType = (o1.varType == keywordChar || (!o1.szArr && o1.varType == keywordCharPtr)) ? keywordCharPtr : keywordIntPtr};
+				else tmp = o2; const uint8_t isVarArr = o1.szArr > 0;
+				symbol tmp2 = (symbol){.type = local, .vReg = curTempVReg++, .varType = (token){.type = (o1.varType.type == keywordChar || (!isVarArr && o1.varType.type == keywordCharPtr)) ? keywordCharPtr : keywordIntPtr}};
+				tmp2.varType.val = o1.varType.val + isVarArr;
 				emitQuad((quad){.op = ADD, .o1 = tmp2, .o2 = o1, .o3 = tmp});
 				if(valType == lvalue){
 					tmp2.isAddr = true; return tmp2;
@@ -278,7 +283,7 @@ symbol linearizeNode(const linData dat){
 					targetReg = newVReg(keywordInt);
 					if(o1.szArr){
 						targetReg.varType = o1.varType;
-					} else targetReg.varType = (o1.varType == keywordIntPtr) ? keywordInt : keywordChar;
+					} else targetReg.varType = (o1.varType.val-1) ? (token){.type = o1.varType.type, .val = o1.varType.val - 1} : (token){.type = (o1.varType.type == keywordIntPtr ? keywordInt : keywordChar)};
 				}
 				emitQuad((quad){.op = LOAD, .o1 = targetReg, .o2 = tmp2});
 				if(secondaryTarget.isAddr){
@@ -380,7 +385,7 @@ symbol linearizeNode(const linData dat){
 		}
 		case declarationNode:{
 			if(n->firstChild->symbolData.szArr != 0){
-				curDescriptor->stackSize += n->firstChild->symbolData.szArr * ((n->firstChild->symbolData.varType != keywordChar) * 4);
+				curDescriptor->stackSize += n->firstChild->symbolData.szArr * ((n->firstChild->symbolData.varType.type != keywordChar) * 4);
 				emitQuad((quad){.op = n->firstChild->symbolData.type == global ? GLOBAL : STACK, .o1 = n->firstChild->symbolData});
 			} addVReg(n->firstChild->symbolData);
 			return n->firstChild->symbolData;
@@ -389,7 +394,7 @@ symbol linearizeNode(const linData dat){
 			node* o1n = n->firstChild;
 			symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 			const token castType = n->val;
-			o1.varType = castType.type;
+			o1.varType = castType;
 			if(targetReg.vReg != -1) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = o1});
 			if(isConditional){
 				emitQuad((quad){.op = CMP, .o1 = o1, .o2 = (symbol){.type = literal, .vReg = 0}});

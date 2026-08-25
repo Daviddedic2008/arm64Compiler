@@ -55,17 +55,17 @@ uint32_t getUsedVRegs(){return numVRegs;}
 void deepenScope(){scopeDepth++;}
 
 typedef struct{
-	symbolType type; tokenType varType; int32_t vReg; uint32_t szArr;
+	symbolType type; token varType; int32_t vReg; uint32_t szArr;
 	token name; uint32_t scopeDepth;
 }symbolB;
 
 void initPools(){nodePool = newArena(nodeStep * sizeof(node)); symbolPool = newArena(symbolStep * sizeof(symbolB));}
 
-symbolB constructSymbol(const token name, const tokenType varType, const symbolType type){
+symbolB constructSymbol(const token name, const token varType, const symbolType type){
 	return (symbolB){.name = name, .type = type, .varType = varType, .scopeDepth = scopeDepth, .vReg = numVRegs++};
 }
 
-symbolB* addSymbol(const token name, const tokenType varType, const symbolType type){
+symbolB* addSymbol(const token name, const token varType, const symbolType type){
 	const symbolB tmp = constructSymbol(name, varType, type);
 	return writeElement(&symbolPool, &tmp, sizeof(symbolB));
 }
@@ -146,7 +146,7 @@ node* parseArgument(){
 		case keywordInt: case keywordChar:
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
 		n = addNode(declarationNode);
-		n->val = t; const uint8_t st = t.type; t = eatToken(); const uint8_t sz = st == keywordChar ? 1 : 4; 
+		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4; 
 		symbolB* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
 		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
 		addChild(n, (node){.type = identifierNode, .val = t, .symbolData = (symbol){.type = s->type, .varType = st, .vReg = s->vReg, .szArr = as}}); return n;
