@@ -12,11 +12,11 @@ typedef enum symbolType : uint8_t {global, label, flag, local, arg, physical, li
 
 typedef struct{
 	symbolType type; token varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
-	uint8_t strLen; bool isAddr;
+	uint8_t strLen; bool isAddr; token name; uint32_t scopeDepth;
 }symbol;
 
 typedef struct node{
-	nodeType type; token val; symbol symbolData;
+	nodeType type; token val; symbol* symbolData;
 	struct node* firstChild; struct node* lastChild; struct node* sibling;
 }node;
 

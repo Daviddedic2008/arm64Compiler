@@ -45,7 +45,8 @@ const char* symbolNames[] = {
 
 arena nodePool; jmp_buf compRetEnv;
 
-arena symbolPool; uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs;
+uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs;
+arena symbolPool;
 
 uint32_t numFuncs;
 
@@ -54,35 +55,30 @@ uint32_t getNumFuncs(){return numFuncs;}
 uint32_t getUsedVRegs(){return numVRegs;}
 void deepenScope(){scopeDepth++;}
 
-typedef struct{
-	symbolType type; token varType; int32_t vReg; uint32_t szArr;
-	token name; uint32_t scopeDepth;
-}symbolB;
+void initPools(){nodePool = newArena(nodeStep * sizeof(node)); symbolPool = newArena(symbolStep * sizeof(symbol));}
 
-void initPools(){nodePool = newArena(nodeStep * sizeof(node)); symbolPool = newArena(symbolStep * sizeof(symbolB));}
-
-symbolB constructSymbol(const token name, const token varType, const symbolType type){
-	return (symbolB){.name = name, .type = type, .varType = varType, .scopeDepth = scopeDepth, .vReg = numVRegs++};
+symbol constructSymbol(const token name, const token varType, const symbolType type){
+	return (symbol){.name = name, .type = type, .varType = varType, .scopeDepth = scopeDepth, .vReg = numVRegs++};
 }
 
-symbolB* addSymbol(const token name, const token varType, const symbolType type){
-	const symbolB tmp = constructSymbol(name, varType, type);
-	return writeElement(&symbolPool, &tmp, sizeof(symbolB));
+symbol* addSymbol(const token name, const token varType, const symbolType type){
+	const symbol tmp = constructSymbol(name, varType, type);
+	return writeElement(&symbolPool, &tmp, sizeof(symbol));
 }
 
-symbol getSymbol(const token t){
-	for(int32_t si = symbolPool.used/sizeof(symbolB)-1; si >= 0; si--){
-		const symbolB ts = ((symbolB*)symbolPool.pool)[si];
-		if(t.len == ts.name.len && !strncmp(ts.name.str, t.str, t.len)){
-			return (symbol){.varType = ts.varType, .type = ts.type, .vReg = ts.vReg, .szArr = ts.szArr};
+symbol* getSymbol(const token t){
+	for(int32_t si = symbolPool.used/sizeof(symbol)-1; si >= 0; si--){
+		const symbol* ts = ((symbol*)symbolPool.pool) + si;
+		if(t.len == ts->name.len && !strncmp(ts->name.str, t.str, t.len)){
+			return ts;
 		}
-	}return (symbol){.type = invalidSymbol};
+	}return NULL;
 }
 
 void returnScope(){ uint32_t rmi = 0;
-	for(int32_t ti = symbolPool.used/sizeof(symbolB)-1; ti >= 0; rmi++, ti--){
-		if(((symbolB*)symbolPool.pool)[ti].scopeDepth != scopeDepth) break;
-	} scopeDepth--; symbolPool.used -= sizeof(symbolB) * rmi;
+	for(int32_t ti = symbolPool.used/sizeof(symbol)-1; ti >= 0; rmi++, ti--){
+		if(((symbol*)symbolPool.pool)[ti].scopeDepth != scopeDepth) break;
+	} scopeDepth--; symbolPool.used -= sizeof(symbol) * rmi;
 }
 
 node constructNode(const nodeType type){
@@ -138,7 +134,7 @@ token singleOpMap(token t){
 node* parseArgument(){
 	token t = eatToken(); node* n;
 	switch(t.type){
-		case literal: n = addNode(literalNode); break;
+		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, t, literalSymbol); break;
 		case identifier: switch(peekToken().type){
 			case parenthesesL: n = parseFuncCall(t); eatToken(); return n;
 			default: n = addNode(identifierNode); n->val = t; n->symbolData = getSymbol(t);
@@ -147,9 +143,9 @@ node* parseArgument(){
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
 		n = addNode(declarationNode);
 		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4; 
-		symbolB* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
+		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
 		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
-		addChild(n, (node){.type = identifierNode, .val = t, .symbolData = (symbol){.type = s->type, .varType = st, .vReg = s->vReg, .szArr = as}}); return n;
+		s->varType = st; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
 		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
 		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
@@ -281,8 +277,7 @@ node constructTree(tokenArray arr){
 	tokensScanned = 0; stackDepth = 0; scopeDepth = 0;
 	withinFunctionDef = false; numVRegs = 0; numFuncs = 0;
 	srcArr = arr; initPools();
-	
-	node* b = parseBody(); freeArena(symbolPool);
+	node* b = parseBody();
 	return *b;
 }
 
@@ -293,9 +288,9 @@ void printTree(node* n, int depth) {
     const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
 
     printf("[%s | %s", nName, tName);
-	if(n->type == identifierNode && n->symbolData.szArr != 0) printf(" | %d elements", n->symbolData.szArr);
+	if(n->type == identifierNode && n->symbolData->szArr != 0) printf(" | %d elements", n->symbolData->szArr);
 	
-	if(n->type == identifierNode) printf(" | %s", symbolNames[n->symbolData.type]); 
+	if(n->type == identifierNode) printf(" | %s", symbolNames[n->symbolData->type]); 
 
     printf("]\n");
     fflush(stdout);

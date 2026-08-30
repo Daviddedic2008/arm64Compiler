@@ -41,7 +41,7 @@ void printSymbol(symbol s) {
             else printf("x%d", s.vReg);
             break;
         case local: printf("loc_off(%d)_", s.vReg); printType(s.varType); goto dop;
-        case global: printf("global_id(%d)_%s", s.vReg); printType(s.varType); goto dop;
+        case global: printf("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case arg: printf("arg_%d_", s.vReg); printType(s.varType); goto dop;
 		dop:
 		if(s.szArr) printf("[%d]", s.szArr);
@@ -191,15 +191,15 @@ symbol linearizeNode(const linData dat){
 	switch(n->type){
 		case identifierNode:
 		if(isConditional){
-			emitQuad((quad){.op = CMP, .o1 = n->symbolData, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
+			emitQuad((quad){.op = CMP, .o1 = *(n->symbolData), .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
 		else if(targetReg.vReg != -1 && targetReg.type != label){
 			if(targetReg.isAddr){
-				emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = n->symbolData});
-			} else{emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = n->symbolData}); n->symbolData = targetReg;}
+				emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = *(n->symbolData)});
+			} else{emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = *(n->symbolData)}); *(n->symbolData) = targetReg;}
 		}
-		return n->symbolData;
+		return *(n->symbolData);
 		case literalNode:{symbol tmpLit = (symbol){.type = literalSymbol, .vReg = n->val.val};
 		if(isConditional){
 			emitQuad((quad){.op = CMP, .o1 = tmpLit, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
@@ -358,16 +358,16 @@ symbol linearizeNode(const linData dat){
 			node* cn = n->firstChild; uint32_t numArgs = 0;
 			if(secondaryTarget.isAddr){secondaryTarget = targetReg; targetReg.type = fncsEncountered ? local : global; targetReg.vReg = curTempVReg++;}
 			while(cn != NULL){
-				if(cn->type != literalNode && cn->type != identifierNode) cn->symbolData = linearizeNode((linData){cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0});
+				if(cn->type != literalNode && cn->type != identifierNode) *(cn->symbolData) = linearizeNode((linData){cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0});
 				else{
-					cn->symbolData = linearizeNode((linData){cn, nullSymbol, 0});
+					*(cn->symbolData) = linearizeNode((linData){cn, nullSymbol, 0});
 				}
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}cn = n->firstChild; numArgs = 0;
 			while(cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, cn->symbolData});
-				else emitQuad((quad){.op = PUSH, .o1 = cn->symbolData});
+				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, *(cn->symbolData)});
+				else emitQuad((quad){.op = PUSH, .o1 = *(cn->symbolData)});
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}
@@ -384,11 +384,11 @@ symbol linearizeNode(const linData dat){
 			return retReg;
 		}
 		case declarationNode:{
-			if(n->firstChild->symbolData.szArr != 0){
-				curDescriptor->stackSize += n->firstChild->symbolData.szArr * ((n->firstChild->symbolData.varType.type != keywordChar) * 4);
-				emitQuad((quad){.op = n->firstChild->symbolData.type == global ? GLOBAL : STACK, .o1 = n->firstChild->symbolData});
-			} addVReg(n->firstChild->symbolData);
-			return n->firstChild->symbolData;
+			if(n->firstChild->symbolData->szArr != 0){
+				curDescriptor->stackSize += n->firstChild->symbolData->szArr * ((n->firstChild->symbolData->varType.type != keywordChar) * 4);
+				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = *(n->firstChild->symbolData)});
+			} addVReg(*(n->firstChild->symbolData));
+			return *(n->firstChild->symbolData);
 		}
 		case castNode:{
 			node* o1n = n->firstChild;
