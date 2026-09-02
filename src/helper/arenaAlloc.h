@@ -6,6 +6,10 @@ typedef struct{
 	uint32_t allocated, used;
 }arena;
 
+typedef struct{
+	void* data; uint32_t size;
+}sizedPool;
+
 arena newArena(const uint32_t sz);
 void* writeElement(arena* a, const void* data, const uint32_t wrSz);
 void* blankElement(arena* a, const uint32_t wrSz);

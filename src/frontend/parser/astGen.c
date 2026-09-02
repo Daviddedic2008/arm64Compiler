@@ -134,7 +134,7 @@ token singleOpMap(token t){
 node* parseArgument(){
 	token t = eatToken(); node* n;
 	switch(t.type){
-		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, t, literalSymbol); break;
+		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, t, literalSymbol); numVRegs--; break;
 		case identifier: switch(peekToken().type){
 			case parenthesesL: n = parseFuncCall(t); eatToken(); return n;
 			default: n = addNode(identifierNode); n->val = t; n->symbolData = getSymbol(t);

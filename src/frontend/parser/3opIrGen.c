@@ -1,6 +1,5 @@
 #include "3opIrGen.h"
 #include <stdint.h>
-#include "../../helper/arenaAlloc.h"
 #include <stdlib.h>
 
 /*
@@ -16,7 +15,7 @@ uint32_t numQuads, numLabels; arena quadPool;
 const char* op_names[] = {
     "ADD", "SUB", "NEG", "MUL", "DIV", "AND", "NOT", "OR", "XOR",
     "LOAD", "STORE", "STACK", "GLOBAL", "MOV", "LOADIMM", "CMP", "JMP", "JMPCND", "SETLABEL", "READFLAGS",
-    "CALL", "ARG", "FNCDEF", "RET", "REF", "DEREF", "REF_OFF", "DEREF_OFF", "PUSH", "POP"
+    "CALL", "ARG", "FNCDEF", "RET", "ALIGN", "REF", "DEREF", "REF_OFF", "DEREF_OFF", "PUSH", "POP"
 };
 
 const char* flag_names[] = {
@@ -71,7 +70,7 @@ void printQuad(quad q) {
 		case SETLABEL: printSymbol(q.o1); printf(":"); break;
 		case READFLAGS: printSymbol(q.o1); printf(" = check "); printSymbol(q.o2); break;
         case FNCDEF: printf("\nDEF "); printSymbol(q.o1); break;
-        case RET: printf("RET "); break;
+        case RET: case ALIGN: printf(op_names[q.op]); break;
         case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printf("%s ", op_names[q.op]); printSymbol(q.o1); break;
         case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printf(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
         default: printf("UNKNOWN_OP(%d)", q.op); break;
@@ -161,6 +160,10 @@ void addVReg(const symbol s){
 	if(curDescriptor == NULL) return; 
 	curDescriptor->numVars++;
 	writeElement(&frameDescriptorVregs, &s, sizeof(symbol));
+}
+
+uint32_t getTotalVRegs(){
+	return curTempVReg;
 }
 
 int32_t curStartLbl, curEndLbl;
@@ -255,7 +258,19 @@ symbol linearizeNode(const linData dat){
 					return o1;
 				}
 				if(n->val.type == opLogicalNot && o1.type == flag) return reverseFlag(o1);
-				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg = newVReg(keywordInt);}
+				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){
+					secondaryTarget = targetReg; targetReg = newVReg(keywordInt);
+					if(n->val.type == opReference){
+						switch(targetReg.varType.type){
+							case keywordInt:
+							targetReg.varType.type = keywordIntPtr; targetReg.varType.val = 1; break;
+							case keywordChar:
+							targetReg.varType.type = keywordCharPtr; targetReg.varType.val = 1; break;
+							case keywordIntPtr: case keywordCharPtr:
+							targetReg.varType.val += 1; break;
+						}
+					}	
+				}				
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				if(secondaryTarget.isAddr){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
@@ -371,6 +386,7 @@ symbol linearizeNode(const linData dat){
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}
+			emitQuad((quad){.op = ALIGN});
 			emitQuad((quad){.op = CALL, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
 			const symbol r0s = (symbol){.type = physical, .vReg = 0};
 			if(targetReg.vReg != -1 || targetReg.isAddr) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = r0s});
@@ -479,12 +495,12 @@ symbol linearizeNode(const linData dat){
 
 #define maxQuads 4096
 
-quad* linearizeAST(const node* baseNode){
+arena linearizeAST(const node* baseNode){
 	fncJmpLabels = malloc(sizeof(uint32_t) * getNumFuncs()); numQuads = 0;
 	quadPool = newArena(sizeof(quad) * maxQuads); numLabels = 0;
 	initFrameDescPool(); frameDescriptors = newArena(sizeof(frameDescriptor) * 256);
 	curTempVReg = getUsedVRegs(); fncsEncountered = 0;
 	linearizeNode((linData){baseNode, nullSymbol, 0});
 	printQuads();
-	return quadPool.pool;
+	return quadPool;
 }

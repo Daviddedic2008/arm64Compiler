@@ -1,12 +1,13 @@
 // 3 operand IR gen
 #include <stdint.h>
+#include "../../helper/arenaAlloc.h"
 #include "astGen.h"
 
 typedef enum operation{
 	ADD, SUB, NEG, MUL, DIV, AND, NOT, OR, XOR,
 	LOAD, STORE, STACK, GLOBAL, MOV, LOADIMM,
 	CMP, JMP, JMPCND, SETLABEL, READFLAGS,
-	CALL, ARG, FNCDEF, RET,
+	CALL, ARG, FNCDEF, RET, ALIGN,
 	REF, DEREF, REF_O, DEREF_O,
 	PUSH, POP
 }operation;
@@ -20,4 +21,8 @@ typedef struct{
 	symbol o1, o2, o3;
 }quad;
 
-quad* linearizeAST(const node* baseNode);
+arena linearizeAST(const node* baseNode);
+
+uint32_t getTotalVRegs();
+
+void printSymbol(symbol s);
