@@ -6,7 +6,8 @@ void printRanges(const sizedPool p){
 	for(uint32_t r = 0; r < p.size; r++){
 		const range rt = ((range*)p.data)[r];
 		if(rt.vReg == NULL){printf("???\n"); continue;}
-		printf("RANGE(%d : %d)<<", rt.i1, rt.i2); printSymbol(*rt.vReg); printf(">>\n");
+		printf("RANGE(%d : %d)<<", rt.i1, rt.i2); printSymbol(*rt.vReg); printf(">>");
+		if(rt.vReg->preferredReg) printf("PREF[x%d]", rt.vReg->preferredReg-1); printf("\n");
 	}
 }
 
@@ -33,15 +34,15 @@ sizedPool constructRanges(const arena quadArena){
         for(uint32_t q = 0; q < nq; q++){
             quad* q_ptr = &((quad*)quadArena.pool)[q];
             if(validType(q_ptr->o1) && q_ptr->o1.vReg == r){
-                if(!start){ start = q + 1; sf = &q_ptr->o1; }
+                if(!start){ start = q + 1;} sf = &q_ptr->o1; 
                 end = q;
             }
             if(validType(q_ptr->o2) && q_ptr->o2.vReg == r){
-                if(!start){ start = q + 1; sf = &q_ptr->o2; }
+                if(!start){ start = q + 1;} sf = &q_ptr->o2; 
                 end = q;
             }
             if(validType(q_ptr->o3) && q_ptr->o3.vReg == r){
-                if(!start){ start = q + 1; sf = &q_ptr->o3; }
+                if(!start){ start = q + 1;} sf = &q_ptr->o3;
                 end = q;
             }
         }
@@ -49,4 +50,29 @@ sizedPool constructRanges(const arena quadArena){
         ((range*)ret.data)[r] = (range){.vReg = sf, .i1 = start, .i2 = end};
     }
     return ret;
+}
+
+typedef struct{
+	range* n1; range* n2;
+}edge;
+
+
+#define startingEdges 2048
+
+arena constructEdges(const sizedPool ranges){
+	arena edgeArena = newArena(sizeof(edge) * 2048);
+	 range* r = (range*)ranges.data; for(uint32_t n = 0; n < ranges.size; n++, r++){
+		range* r2 = (range*)ranges.data; for(uint32_t ni = 0; ni < ranges.size; ni++, r2++){
+			if((r->i1 < r2->i2) && (r2->i1 < r->i2) && (n-ni) && !r2->edgesFound){
+				const edge e = (edge){.n1 = r, .n2 = r2};
+				writeElement(&edgeArena, &e, sizeof(edge));
+			}
+		} r->edgesFound = 1;
+	} return edgeArena;
+}
+
+void printEdges(const arena edgeArena){
+	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
+		printf("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
+	}
 }

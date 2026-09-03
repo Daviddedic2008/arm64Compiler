@@ -70,8 +70,8 @@ void printQuad(quad q) {
 		case SETLABEL: printSymbol(q.o1); printf(":"); break;
 		case READFLAGS: printSymbol(q.o1); printf(" = check "); printSymbol(q.o2); break;
         case FNCDEF: printf("\nDEF "); printSymbol(q.o1); break;
-        case RET: case ALIGN: printf(op_names[q.op]); break;
-        case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printf("%s ", op_names[q.op]); printSymbol(q.o1); break;
+        case ALIGN: printf(op_names[q.op]); break;
+        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printf("%s ", op_names[q.op]); printSymbol(q.o1); break;
         case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printf(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
         default: printf("UNKNOWN_OP(%d)", q.op); break;
     }
@@ -215,7 +215,7 @@ symbol linearizeNode(const linData dat){
 		}
 		return tmpLit;
 		}
-		case operatorNode:{switch(n->val.type){
+		case operatorNode: {switch(n->val.type){
 			case opEqual:
 			symbol resultReg = linearizeNode((linData){n->firstChild, nullSymbol, 0, lvalue});
 			linearizeNode((linData){n->firstChild->sibling, resultReg, 0, rvalue});
@@ -348,8 +348,9 @@ symbol linearizeNode(const linData dat){
 			}
 			case keywordReturn:{
 				if(n->firstChild == NULL) return nullSymbol;
-				const symbol retV = linearizeNode((linData){n->firstChild, (symbol){.type = physical, .vReg = 0}, 0});
-				emitQuad((quad){.op = RET});
+				symbol retV = linearizeNode((linData){n->firstChild, nullSymbol, 0, rvalue});
+				retV.preferredReg = 1; 
+				emitQuad((quad){.op = RET, .o1 = retV});
 				return retV;
 			}
 		}
@@ -361,7 +362,10 @@ symbol linearizeNode(const linData dat){
 			fncJmpLabels[fncsEncountered++] = numQuads;
 			node* cn = n->firstChild->sibling; uint32_t numArgs = 0;
 			while(cn != n->lastChild && cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = linearizeNode((linData){cn, nullSymbol, 0}), .o2 = (symbol){.type = physical, .vReg = numArgs}});
+				if(numArgs < 8){
+					symbol a = linearizeNode((linData){cn, nullSymbol, 0}); a.preferredReg = numArgs+1;
+					emitQuad((quad){.op = MOV, .o1 = a, .o2 = (symbol){.type = physical, .vReg = numArgs}});
+				}
 				else emitQuad((quad){.op = POP, .o1 = linearizeNode((linData){cn, nullSymbol, 0})});
 				numArgs++; cn = cn->sibling;
 			}
@@ -381,7 +385,10 @@ symbol linearizeNode(const linData dat){
 				cn = cn->sibling;
 			}cn = n->firstChild; numArgs = 0;
 			while(cn != NULL){
-				if(numArgs < 8) emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, *(cn->symbolData)});
+				if(numArgs < 8){
+					cn->symbolData->preferredReg = numArgs+1;
+					emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, *(cn->symbolData)});
+				}
 				else emitQuad((quad){.op = PUSH, .o1 = *(cn->symbolData)});
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
@@ -463,10 +470,9 @@ symbol linearizeNode(const linData dat){
 		case statementNode:{
 			switch(n->val.type){
 				case keywordReturn:{
-					if(n->firstChild != NULL){
-						const symbol r1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
-						emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = 0}, r1});
-					} emitQuad((quad){.op = RET});
+					symbol r1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+					r1.preferredReg = 1; 
+					emitQuad((quad){.op = RET, .o1 = r1});
 					break;
 				}
 				case keywordBreak:{

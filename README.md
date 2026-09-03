@@ -4,13 +4,13 @@
 * **Primitives**: `int` (32-bit signed), `char` (8-bit), `void` (functions with no return value).
 * **Pointers**: Multi-level indirection (e.g., `int***`). Managed via `&` (address-of) and `*` (dereference).
 * **Arrays**: Single-dimensional, fixed-size. Syntax `arr[i]` decays to scaled pointer arithmetic.
-* **Constraints**: Strict typing enforced. No implicit casting or promotion. Structs/unions are excluded.
+* **Constraints**: Implicit casting characters to integers and vice versa is allowed. Structs/unions are excluded.
 * **Scope**: Supports local stack variables and global static variables.
 
 ## 2. Syntax & Control Flow
 * **Statements**: Semicolon-terminated. Blocks bounded by `{}`.
 * **Conditionals**: `if (expr) { ... } else { ... }`
-* **Loops**: `while (expr) { ... }`
+* **Loops**: `while (expr) { ... } for(def; expr; inc;) { ... }`
 * **Jumps**: `break;`, `continue;`, and `return <expr>;`
 * **Booleans**: Evaluated strictly on zero (`0` as false) vs. non-zero (any other value as true).
 
