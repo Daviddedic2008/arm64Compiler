@@ -17,7 +17,7 @@ const char* nodeNames[] = {
 
 const char* tokenNames[] = {
     [opPlus] = "opPlus", [opMinus] = "opMinus", [opIncrement] = "opIncrement", [opNegate] = "opNegate",
-	[opDecrement] = "opDecrement", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
+	[opDecrement] = "opDecrement", [opDPlus] = "opDPlus", [opDMinus] = "opDMinus", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
     [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
     [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
     [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr", [opBitwiseXor] = "opBitwiseXor",
@@ -169,7 +169,7 @@ uint16_t getPrecedence(const uint8_t t) {
         case opBitwiseOr: case opBitwiseXor: return 40;
         case opLogicalAnd: return 30;
         case opLogicalOr: return 20;
-        case opEqual: case opIncrement: case opDecrement: return 10;
+        case opEqual: case opIncrement: case opDecrement: case opDPlus: case opDMinus: return 10;
 		case squareBraceL: return 110;
         default: return 0;
     }
@@ -194,6 +194,8 @@ token peekOperator(){
 			case opCmpLess: ret.type = opCmpLeEq; break;
 			case opBitwiseNot: ret.type = opCmpNe; break;
 		} break;
+		case opPlus: if(ret.type == opPlus) ret.type = opDPlus; break;
+		case opMinus: if(ret.type == opMinus) ret.type = opDMinus; break;
 		case opBitwiseAnd:
 		if(ret.type == opBitwiseAnd) ret.type = opLogicalAnd; break;
 		case opBitwiseOr:
@@ -208,9 +210,12 @@ node* parseExpression(const uint16_t minPrecedence){
 		if(op.type == squareBraceR){eatToken();continue;}
 		if(p < minPrecedence || !p) break;
 		eatToken();
-		node* right = parseExpression(p+1);
 		node* parent = addNode(operatorNode); parent->val = op;
-		addChildFromPtr(parent, left); addChildFromPtr(parent, right); left = parent;
+		if(op.type != opDPlus && op.type != opDMinus){
+			node* right = parseExpression(p+1);
+			addChildFromPtr(parent, right); 
+		}
+		addChildFromPtr(parent, left); left = parent;
 	} return left;
 }
 

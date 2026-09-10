@@ -32,7 +32,8 @@ sizedPool constructRanges(const arena quadArena){
         uint32_t start = 0, end = 0;
         symbol* sf = NULL;
         for(uint32_t q = 0; q < nq; q++){
-            quad* q_ptr = &((quad*)quadArena.pool)[q];
+            quad* q_ptr = &((quad*)quadArena.pool)[q]; if(q_ptr->skippable) continue;
+			uint32_t preReg = (sf != NULL) ? sf->preferredReg : 0;
             if(validType(q_ptr->o1) && q_ptr->o1.vReg == r){
                 if(!start){ start = q + 1;} sf = &q_ptr->o1; 
                 end = q;
@@ -44,7 +45,8 @@ sizedPool constructRanges(const arena quadArena){
             if(validType(q_ptr->o3) && q_ptr->o3.vReg == r){
                 if(!start){ start = q + 1;} sf = &q_ptr->o3;
                 end = q;
-            }
+            } 
+			if(preReg != 0 && sf != NULL) sf->preferredReg = preReg;
         }
         start -= 1;
         ((range*)ret.data)[r] = (range){.vReg = sf, .i1 = start, .i2 = end};
@@ -75,4 +77,8 @@ void printEdges(const arena edgeArena){
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
 		printf("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
 	}
+}
+
+void precolor(){
+	
 }

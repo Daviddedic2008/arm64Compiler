@@ -13,9 +13,12 @@ if a child is another operator or something and u need it for an argument, use m
 uint32_t numQuads, numLabels; arena quadPool;
 
 const char* op_names[] = {
-    "ADD", "SUB", "NEG", "MUL", "DIV", "AND", "NOT", "OR", "XOR",
-    "LOAD", "STORE", "STACK", "GLOBAL", "MOV", "LOADIMM", "CMP", "JMP", "JMPCND", "SETLABEL", "READFLAGS",
-    "CALL", "ARG", "FNCDEF", "RET", "ALIGN", "REF", "DEREF", "REF_OFF", "DEREF_OFF", "PUSH", "POP"
+    [ADD] = "ADD", [SUB] = "SUB", [NEG] = "NEG", [MUL] = "MUL", [DIV] = "DIV", 
+	[AND] = "AND", [NOT] = "NOT", [OR] = "OR", [XOR] = "XOR",
+    [LOAD] = "LOAD", [STORE] = "STORE", [STACK] = "STACK", [GLOBAL] = "GLOBAL", [MOV] = "MOV", [LOADIMM] = "LOADIMM", [CMP] = "CMP", 
+	[JMP] = "JMP", [JMPCND] = "JMPCND", [SETLABEL] = "SETLABEL", [READFLAGS] = "READFLAGS",
+    [CALL] = "CALL", [ARG] = "ARG", [FNCDEF] = "FNCDEF", [RET] = "RET", [ALIGN] = "ALIGN", [REF] = "REF", [DEREF] = "DEREF", [REF_O]= "REF_OFF", [DEREF_O] = "DEREF_OFF", 
+	[PUSH] = "PUSH", [POP] = "POP"
 };
 
 const char* flag_names[] = {
@@ -39,7 +42,7 @@ void printSymbol(symbol s) {
             else if (s.vReg == 29) printf("fp");
             else printf("x%d", s.vReg);
             break;
-        case local: printf("loc_off(%d)_", s.vReg); printType(s.varType); goto dop;
+        case local: printf("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case global: printf("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case arg: printf("arg_%d_", s.vReg); printType(s.varType); goto dop;
 		dop:
@@ -55,6 +58,7 @@ void printSymbol(symbol s) {
 }
 
 void printQuad(quad q) {
+	if(q.skippable) return;
     switch (q.op) {
         case ADD: case SUB: case MUL: case DIV: case AND: case OR: case XOR:
             printSymbol(q.o1); printf(" = "); printSymbol(q.o2); printf(" %s ", op_names[q.op]); printSymbol(q.o3);
@@ -188,6 +192,15 @@ void printQuads(){
 	}
 }
 
+int evalImm(const tokenType op, const symbol o1, const symbol o2){
+	switch(op){
+		case opPlus: return o1.vReg + o2.vReg;
+		case opMinus: return o1.vReg - o2.vReg;
+		case opMul: return o1.vReg * o2.vReg;
+		case opDiv: return o1.vReg / o2.vReg;
+	}
+}
+
 symbol linearizeNode(const linData dat){
 	symbol secondaryTarget;
 	node* n = dat.n; symbol targetReg = dat.targetReg; bool isConditional = dat.isConditional; memType valType = dat.valType;
@@ -224,9 +237,20 @@ symbol linearizeNode(const linData dat){
 				return (symbol){.type = flag, .vReg = flagEq};
 			}
 			return resultReg;
+			
 			case opPlus: case opMinus: case opMul: case opDiv: case opBitwiseXor: case opBitwiseAnd: case opBitwiseOr:{
-				const symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
-				const symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
+				symbol o1, o2;
+				goto starto1o2;
+				case opIncrement: case opDecrement: case opDPlus: case opDMinus:
+				o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); targetReg = o1;
+				o2 = (n->val.type == opIncrement || n->val.type == opDecrement) ? linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0}) : (symbol){.type = literalSymbol, .vReg = 1};
+				n->val.type = (n->val.type == opIncrement || n->val.type == opDPlus) ? opPlus : opMinus;
+				goto skipo1o2; starto1o2:;
+				o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+				o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
+				skipo1o2:;
+				skpOtherOps:;
+				if(targetReg.vReg == -1 && o1.type == literalSymbol && o2.type == literalSymbol) return (symbol){.type = literalSymbol, .vReg = evalImm(n->val.type, o1, o2)};
 				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg = newVReg(targetReg.varType.type == keywordIntPtr ? keywordInt : keywordChar);}
 				targetReg.varType = combineTypes(o1.varType, o2.varType);
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
@@ -272,6 +296,9 @@ symbol linearizeNode(const linData dat){
 					}	
 				}				
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
+				if(n->val.type == opReference){
+					emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = o1});
+				}
 				if(secondaryTarget.isAddr){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
 				}
@@ -303,6 +330,7 @@ symbol linearizeNode(const linData dat){
 				emitQuad((quad){.op = LOAD, .o1 = targetReg, .o2 = tmp2});
 				if(secondaryTarget.isAddr){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
+					return secondaryTarget;
 				}
 				return targetReg;
 			}
@@ -377,19 +405,14 @@ symbol linearizeNode(const linData dat){
 			node* cn = n->firstChild; uint32_t numArgs = 0;
 			if(secondaryTarget.isAddr){secondaryTarget = targetReg; targetReg.type = fncsEncountered ? local : global; targetReg.vReg = curTempVReg++;}
 			while(cn != NULL){
-				if(cn->type != literalNode && cn->type != identifierNode) *(cn->symbolData) = linearizeNode((linData){cn, (symbol){.type = arg, .vReg = curTempVReg++}, 0});
-				else{
-					*(cn->symbolData) = linearizeNode((linData){cn, nullSymbol, 0});
-				}
-				numArgs++; if(cn == n->lastChild) break;
-				cn = cn->sibling;
-			}cn = n->firstChild; numArgs = 0;
-			while(cn != NULL){
+				symbol ln = linearizeNode((linData){cn, nullSymbol, 0});
 				if(numArgs < 8){
-					cn->symbolData->preferredReg = numArgs+1;
-					emitQuad((quad){.op = MOV, .o1 = (symbol){.type = physical, .vReg = numArgs}, *(cn->symbolData)});
+					const symbol physicalSpace = (symbol){.type = physical, .vReg = numArgs};
+					ln.preferredReg = numArgs + 1;
+					emitQuad((quad){.op = MOV, .o1 = physicalSpace, .o2 = ln});
+				} else{
+					emitQuad((quad){.op = PUSH, .o1 = ln});
 				}
-				else emitQuad((quad){.op = PUSH, .o1 = *(cn->symbolData)});
 				numArgs++; if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}
@@ -489,13 +512,55 @@ symbol linearizeNode(const linData dat){
 		case bodyNode:{
 			node* cn = n->firstChild;
 			if(cn != NULL) do{
-				if(cn == NULL) break;
 				linearizeNode((linData){cn, nullSymbol, 0});
 				if(cn == n->lastChild) break;
 				cn = cn->sibling;
 			}while(true);
 		}
 		default: return nullSymbol;
+	}
+}
+
+bool compareSymbols(const symbol s1, const symbol s2){
+	return s1.type == s2.type && s1.vReg == s2.vReg;
+}
+
+void referenceOptimizationPass(){
+	uint32_t qi = 0; const uint32_t lm = quadPool.used/sizeof(quad); for(quad* q = (quad*)quadPool.pool; qi < lm; qi++, q++){
+		if(q->op == REF){ (q+1)->skippable = 1;
+			for(uint32_t offset = 2; offset < lm - qi; offset++){
+				const quad* q2 = q + offset; if(q2->op == LOAD && compareSymbols(q2->o2, q->o1)){
+					(q+1)->skippable = 0;
+				}
+			}
+		}
+	}
+}
+
+void constantFoldingPass(){
+	quad* prevOp;
+	uint32_t qi = 0; const uint32_t lm = quadPool.used/sizeof(quad); for(quad* q = (quad*)quadPool.pool; qi < lm; qi++, q++){
+		if(qi) switch(q->op){
+			case ADD: case SUB:{
+				const bool isChain = compareSymbols(q->o2, prevOp->o1) ? q->o3.type == literalSymbol : (compareSymbols(q->o3, prevOp->o1) ? q->o2.type == literalSymbol : 0);
+				if((prevOp->op == ADD || prevOp->op == SUB) && isChain && (prevOp->o2.type == literalSymbol || prevOp->o3.type == literalSymbol)){
+					prevOp->skippable = 1; symbol* newOpReg; curTempVReg--;
+					symbol* const literalC = q->o2.type == literalSymbol ? (newOpReg = &q->o3, &q->o2) : (newOpReg = &q->o2, &q->o3);
+					literalC->vReg += (q->op == SUB ? -1 : 1) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
+				}
+			}
+			case MUL: case DIV:{
+				const bool isChain = compareSymbols(q->o2, prevOp->o1) ? q->o3.type == literalSymbol : (compareSymbols(q->o3, prevOp->o1) ? q->o2.type == literalSymbol : 0);
+				if((prevOp->op == DIV || prevOp->op == MUL) && isChain && (prevOp->o2.type == literalSymbol || prevOp->o3.type == literalSymbol)){
+					prevOp->skippable = 1; symbol* newOpReg; curTempVReg--;
+					symbol* const literalC = q->o2.type == literalSymbol ? (newOpReg = &q->o3, &q->o2) : (newOpReg = &q->o2, &q->o3);
+					literalC->vReg += (q->op != prevOp->op) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
+					if(literalC->vReg < 0){literalC->vReg = -1 * literalC->vReg; q->op = q->op == MUL ? DIV : MUL;}
+				}
+			}
+			case NEG:{
+			}
+		} prevOp = q;
 	}
 }
 
@@ -507,6 +572,8 @@ arena linearizeAST(const node* baseNode){
 	initFrameDescPool(); frameDescriptors = newArena(sizeof(frameDescriptor) * 256);
 	curTempVReg = getUsedVRegs(); fncsEncountered = 0;
 	linearizeNode((linData){baseNode, nullSymbol, 0});
+	referenceOptimizationPass();
+	constantFoldingPass();
 	printQuads();
 	return quadPool;
 }

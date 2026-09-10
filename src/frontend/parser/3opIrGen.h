@@ -4,7 +4,7 @@
 #include "astGen.h"
 
 typedef enum operation{
-	ADD, SUB, NEG, MUL, DIV, AND, NOT, OR, XOR,
+	INVALIDOP, ADD, SUB, NEG, MUL, DIV, AND, NOT, OR, XOR,
 	LOAD, STORE, STACK, GLOBAL, MOV, LOADIMM,
 	CMP, JMP, JMPCND, SETLABEL, READFLAGS,
 	CALL, ARG, FNCDEF, RET, ALIGN,
@@ -19,6 +19,7 @@ typedef enum flags{
 typedef struct{
 	operation op;
 	symbol o1, o2, o3;
+	bool skippable;
 }quad;
 
 arena linearizeAST(const node* baseNode);
