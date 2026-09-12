@@ -1,5 +1,6 @@
 #include "astGen.h"
 #include "../../helper/arenaAlloc.h"
+#include "../../tester/testGen.h"
 #include <string.h>
 
 /*
@@ -78,7 +79,7 @@ symbol* getSymbol(const token t){
 void returnScope(){ uint32_t rmi = 0;
 	for(int32_t ti = symbolPool.used/sizeof(symbol)-1; ti >= 0; rmi++, ti--){
 		if(((symbol*)symbolPool.pool)[ti].scopeDepth != scopeDepth) break;
-	} scopeDepth--; symbolPool.used -= sizeof(symbol) * rmi;
+	} scopeDepth--;
 }
 
 node constructNode(const nodeType type){
@@ -211,11 +212,12 @@ node* parseExpression(const uint16_t minPrecedence){
 		if(p < minPrecedence || !p) break;
 		eatToken();
 		node* parent = addNode(operatorNode); parent->val = op;
+		addChildFromPtr(parent, left); 
 		if(op.type != opDPlus && op.type != opDMinus){
 			node* right = parseExpression(p+1);
 			addChildFromPtr(parent, right); 
 		}
-		addChildFromPtr(parent, left); left = parent;
+		left = parent;
 	} return left;
 }
 
@@ -288,16 +290,16 @@ node constructTree(tokenArray arr){
 
 void printTree(node* n, int depth) {
     if (!n) return;
-    for (int i = 0; i < depth; i++) printf("  ");
+    for (int i = 0; i < depth; i++) printfD("  ");
     const char* nName = (n->type <= statementNode) ? nodeNames[n->type] : "UNKNOWN_NODE";
     const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
 
-    printf("[%s | %s", nName, tName);
-	if(n->type == identifierNode && n->symbolData->szArr != 0) printf(" | %d elements", n->symbolData->szArr);
+    printfD("[%s | %s", nName, tName);
+	if(n->type == identifierNode && n->symbolData->szArr != 0) printfD(" | %d elements", n->symbolData->szArr);
 	
-	if(n->type == identifierNode) printf(" | %s", symbolNames[n->symbolData->type]); 
+	if(n->type == identifierNode) printfD(" | %s", symbolNames[n->symbolData->type]); 
 
-    printf("]\n");
+    printfD("]\n");
     fflush(stdout);
     node* child = n->firstChild;
     while (child) {

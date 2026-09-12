@@ -9,6 +9,7 @@ set BLUE=!ESC![96m
 set RESET=!ESC![0m
 
 set "inputFile=%~1"
+set "testMode=%~2"
 
 set /a NO_ERR=0
 set /a EXPR_ERR=1
@@ -23,7 +24,7 @@ if exist "build\GPC.exe" (
     echo %GREEN%[SUCCESS] Build found.%RESET%
     echo %YELLOW%--- Running ---%RESET%
     echo.
-    build\GPC.exe %inputFile%
+    build\GPC.exe %inputFile% %testMode%
 ) else (
     echo.
     echo %RED%[ERROR] Compiler binary not found. %RESET%

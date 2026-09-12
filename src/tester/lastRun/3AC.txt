@@ -1,0 +1,23 @@
+
+DEF sum
+arg_0_INT = MOV x0
+arg_1_INT = MOV x1
+loc_id(2)_INT = LOADIMM #0
+JMP label_1
+label_0:
+loc_id(2)_INT = loc_id(2)_INT ADD arg_0_INT
+arg_0_INT = arg_0_INT ADD #1
+label_1:
+CMP arg_0_INT, arg_1_INT
+IF f_LT JMP label_0
+label_2:
+RET loc_id(2)_INT
+
+DEF main
+loc_id(3)_INT = LOADIMM #5
+loc_id(4)_INT = LOADIMM #6
+x0 = MOV loc_id(3)_INT
+x1 = MOV loc_id(4)_INT
+ALIGN
+CALL sum
+loc_id(5)_INT = MOV x0

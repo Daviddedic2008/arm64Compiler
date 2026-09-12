@@ -1,6 +1,7 @@
 #include "3opIrGen.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include "../../tester/testGen.h"
 
 /*
 descend to bottom left fo ast, parsing along the way.
@@ -30,30 +31,30 @@ const char* typeNames[] = {
 };
 
 void printType(const token t){
-	printf("%s", typeNames[t.type]);
-	if(t.type == keywordIntPtr || t.type == keywordCharPtr) printf("_depth{%d}", t.val);
+	printfD("%s", typeNames[t.type]);
+	if(t.type == keywordIntPtr || t.type == keywordCharPtr) printfD("_depth{%d}", t.val);
 }
 
 void printSymbol(symbol s) {
     switch (s.type) {
         case physical:
-            if (s.vReg == 31) printf("sp");
-            else if (s.vReg == 30) printf("lr");
-            else if (s.vReg == 29) printf("fp");
-            else printf("x%d", s.vReg);
+            if (s.vReg == 31) printfD("sp");
+            else if (s.vReg == 30) printfD("lr");
+            else if (s.vReg == 29) printfD("fp");
+            else printfD("x%d", s.vReg);
             break;
-        case local: printf("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
-        case global: printf("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
-        case arg: printf("arg_%d_", s.vReg); printType(s.varType); goto dop;
+        case local: printfD("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
+        case global: printfD("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
+        case arg: printfD("arg_%d_", s.vReg); printType(s.varType); goto dop;
 		dop:
-		if(s.szArr) printf("[%d]", s.szArr);
+		if(s.szArr) printfD("[%d]", s.szArr);
 		break;
-        case literalSymbol: printf("#%d", s.vReg); break;
-        case strSymbol: printf("%.*s", s.strLen, s.str); break;
-		case label: printf("label_%d", s.vReg); break;
-		case flag: printf("f_%s", flag_names[s.vReg]); break;
-        case invalidSymbol: printf("???"); break;
-        default: printf("v%d", s.vReg); break;
+        case literalSymbol: printfD("#%d", s.vReg); break;
+        case strSymbol: printfD("%.*s", s.strLen, s.str); break;
+		case label: printfD("label_%d", s.vReg); break;
+		case flag: printfD("f_%s", flag_names[s.vReg]); break;
+        case invalidSymbol: printfD("???"); break;
+        default: printfD("v%d", s.vReg); break;
     }
 }
 
@@ -61,25 +62,25 @@ void printQuad(quad q) {
 	if(q.skippable) return;
     switch (q.op) {
         case ADD: case SUB: case MUL: case DIV: case AND: case OR: case XOR:
-            printSymbol(q.o1); printf(" = "); printSymbol(q.o2); printf(" %s ", op_names[q.op]); printSymbol(q.o3);
+            printSymbol(q.o1); printfD(" = "); printSymbol(q.o2); printfD(" %s ", op_names[q.op]); printSymbol(q.o3);
             break;
         case MOV: case LOADIMM: case LOAD:
-            printSymbol(q.o1); printf(" = %s ", op_names[q.op]); printSymbol(q.o2);
+            printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2);
             break;
         case STORE:
-            printf("STORE "); printSymbol(q.o2); printf(" -> ["); printSymbol(q.o1); printf("]");
+            printfD("STORE "); printSymbol(q.o2); printfD(" -> ["); printSymbol(q.o1); printfD("]");
             break;
-        case JMPCND: printf("IF "); printSymbol(q.o2); printf(" JMP label_%d", q.o1.vReg); break;
-        case CMP: printf("CMP "); printSymbol(q.o1); printf(", "); printSymbol(q.o2); break;
-		case SETLABEL: printSymbol(q.o1); printf(":"); break;
-		case READFLAGS: printSymbol(q.o1); printf(" = check "); printSymbol(q.o2); break;
-        case FNCDEF: printf("\nDEF "); printSymbol(q.o1); break;
-        case ALIGN: printf(op_names[q.op]); break;
-        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printf("%s ", op_names[q.op]); printSymbol(q.o1); break;
-        case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printf(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
-        default: printf("UNKNOWN_OP(%d)", q.op); break;
+        case JMPCND: printfD("IF "); printSymbol(q.o2); printfD(" JMP label_%d", q.o1.vReg); break;
+        case CMP: printfD("CMP "); printSymbol(q.o1); printfD(", "); printSymbol(q.o2); break;
+		case SETLABEL: printSymbol(q.o1); printfD(":"); break;
+		case READFLAGS: printSymbol(q.o1); printfD(" = check "); printSymbol(q.o2); break;
+        case FNCDEF: printfD("\nDEF "); printSymbol(q.o1); break;
+        case ALIGN: printfD(op_names[q.op]); break;
+        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printfD("%s ", op_names[q.op]); printSymbol(q.o1); break;
+        case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
+        default: printfD("UNKNOWN_OP(%d)", q.op); break;
     }
-    printf("\n");
+    printfD("\n");
 }
 
 void emitQuad(const quad q){
@@ -431,7 +432,7 @@ symbol linearizeNode(const linData dat){
 		}
 		case declarationNode:{
 			if(n->firstChild->symbolData->szArr != 0){
-				curDescriptor->stackSize += n->firstChild->symbolData->szArr * ((n->firstChild->symbolData->varType.type != keywordChar) * 4);
+				if(n->firstChild->symbolData->type != global) curDescriptor->stackSize += n->firstChild->symbolData->szArr * ((n->firstChild->symbolData->varType.type != keywordChar) * 4);
 				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = *(n->firstChild->symbolData)});
 			} addVReg(*(n->firstChild->symbolData));
 			return *(n->firstChild->symbolData);

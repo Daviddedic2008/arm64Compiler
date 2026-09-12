@@ -1,13 +1,14 @@
 #include "regAllocator.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include "../../tester/testGen.h"
 
 void printRanges(const sizedPool p){
 	for(uint32_t r = 0; r < p.size; r++){
 		const range rt = ((range*)p.data)[r];
-		if(rt.vReg == NULL){printf("???\n"); continue;}
-		printf("RANGE(%d : %d)<<", rt.i1, rt.i2); printSymbol(*rt.vReg); printf(">>");
-		if(rt.vReg->preferredReg) printf("PREF[x%d]", rt.vReg->preferredReg-1); printf("\n");
+		if(rt.vReg == NULL){printfD("???\n"); continue;}
+		printfD("RANGE(%d : %d)<<", rt.i1, rt.i2); printSymbol(*rt.vReg); printfD(">>");
+		if(rt.vReg->preferredReg) printfD("PREF[x%d]", rt.vReg->preferredReg-1); printfD("\n");
 	}
 }
 
@@ -75,7 +76,7 @@ arena constructEdges(const sizedPool ranges){
 
 void printEdges(const arena edgeArena){
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
-		printf("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
+		printfD("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
 	}
 }
 

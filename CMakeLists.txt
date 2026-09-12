@@ -15,6 +15,7 @@ add_executable(GPC
 	src/frontend/parser/3opIrGen.c
 	src/helper/arenaAlloc.c
 	src/helper/filereader.c
+	src/tester/testGen.c
 	src/backend/regAllocator/regAllocator.c
 )
 target_compile_options(${PROJECT_NAME} PRIVATE -O2)

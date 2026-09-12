@@ -1,0 +1,6 @@
+RANGE(1 : 9)<<arg_0_INT>>PREF[x0]
+RANGE(2 : 9)<<arg_1_INT>>PREF[x1]
+RANGE(3 : 12)<<loc_id(2)_INT>>PREF[x0]
+RANGE(14 : 16)<<loc_id(3)_INT>>PREF[x0]
+RANGE(15 : 17)<<loc_id(4)_INT>>PREF[x1]
+RANGE(20 : 20)<<loc_id(5)_INT>>
