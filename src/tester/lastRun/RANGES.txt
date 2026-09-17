@@ -1,7 +1,3 @@
-RANGE(0 : 0)<<global_id(0)_INT>>
-RANGE(2 : 3)<<arg_1_PTR_INT_depth{1}>>PREF[x0]
-RANGE(7 : 8)<<loc_id(2)_INT>>
-RANGE(7 : 9)<<loc_id(3)_PTR_INT_depth{1}>>PREF[x0]
-RANGE(12 : 12)<<loc_id(4)_INT>>
-RANGE(3 : 4)<<loc_id(5)_PTR_INT_depth{1}>>
-RANGE(4 : 5)<<loc_id(6)_INT>>PREF[x0]
+RANGE(0 : 2)<<global_id(0)_INT>>
+RANGE(2 : 3)<<loc_id(1)_INT>>
+RANGE(3 : 4)<<loc_id(2)_INT>>PREF[x0]

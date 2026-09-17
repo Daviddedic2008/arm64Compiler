@@ -1,15 +1,6 @@
-global_id(0)_INT = LOADIMM #6
+STORE #6 -> [global_id(0)_INT]
 
 DEF helper
-arg_1_PTR_INT_depth{1} = MOV x0
-loc_id(5)_PTR_INT_depth{1} = arg_1_PTR_INT_depth{1} ADD #1
-loc_id(6)_INT = DEREF loc_id(5)_PTR_INT_depth{1}
-RET loc_id(6)_INT
-
-DEF main
-loc_id(3)_PTR_INT_depth{1} = REF loc_id(2)_INT
-STORE loc_id(2)_INT -> [loc_id(3)_PTR_INT_depth{1}]
-x0 = MOV loc_id(3)_PTR_INT_depth{1}
-ALIGN
-CALL helper
-loc_id(4)_INT = MOV x0
+loc_id(1)_INT = LOAD global_id(0)_INT
+loc_id(2)_INT = loc_id(1)_INT ADD #1
+RET loc_id(2)_INT

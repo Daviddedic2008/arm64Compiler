@@ -143,8 +143,8 @@ node* parseArgument(){
 		case keywordInt: case keywordChar:
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
 		n = addNode(declarationNode);
-		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4; 
-		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global));
+		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4;
+		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global)); s->isAddr = ~scopeDepth;
 		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
 		s->varType = st; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
