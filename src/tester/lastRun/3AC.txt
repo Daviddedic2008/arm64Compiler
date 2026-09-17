@@ -1,23 +1,15 @@
+global_id(0)_INT = LOADIMM #6
 
-DEF sum
-arg_0_INT = MOV x0
-arg_1_INT = MOV x1
-loc_id(2)_INT = LOADIMM #0
-JMP label_1
-label_0:
-loc_id(2)_INT = loc_id(2)_INT ADD arg_0_INT
-arg_0_INT = arg_0_INT ADD #1
-label_1:
-CMP arg_0_INT, arg_1_INT
-IF f_LT JMP label_0
-label_2:
-RET loc_id(2)_INT
+DEF helper
+arg_1_PTR_INT_depth{1} = MOV x0
+loc_id(5)_PTR_INT_depth{1} = arg_1_PTR_INT_depth{1} ADD #1
+loc_id(6)_INT = DEREF loc_id(5)_PTR_INT_depth{1}
+RET loc_id(6)_INT
 
 DEF main
-loc_id(3)_INT = LOADIMM #5
-loc_id(4)_INT = LOADIMM #6
-x0 = MOV loc_id(3)_INT
-x1 = MOV loc_id(4)_INT
+loc_id(3)_PTR_INT_depth{1} = REF loc_id(2)_INT
+STORE loc_id(2)_INT -> [loc_id(3)_PTR_INT_depth{1}]
+x0 = MOV loc_id(3)_PTR_INT_depth{1}
 ALIGN
-CALL sum
-loc_id(5)_INT = MOV x0
+CALL helper
+loc_id(4)_INT = MOV x0

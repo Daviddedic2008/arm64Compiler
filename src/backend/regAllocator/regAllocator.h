@@ -4,13 +4,15 @@ typedef struct{
 	uint32_t i1, i2;
 	const symbol* vReg;
 	uint8_t edgesFound, degree;
-	uint16_t physicalReg;
+	uint16_t physicalReg; uint8_t offGraph; uint16_t numEdges;
 }range;
 
-void printRanges(const sizedPool p);
+void printRanges();
 
-sizedPool constructRanges(const arena quadArena);
+void constructRanges(const arena quadArena);
 
-arena constructEdges(const sizedPool ranges);
+void constructEdges();
 
-void printEdges(const arena edgeArena);
+void printEdges();
+
+#define numGPRegs 30

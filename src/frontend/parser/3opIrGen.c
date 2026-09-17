@@ -281,8 +281,9 @@ symbol linearizeNode(const linData dat){
 				if(valType == lvalue && n->val.type == opDereference){
 					o1.isAddr = true;
 					return o1;
-				}
+				} bool extraStore = 0;
 				if(n->val.type == opLogicalNot && o1.type == flag) return reverseFlag(o1);
+				extraStore = targetReg.isAddr && targetReg.type != label;
 				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg(keywordInt);
 					if(n->val.type == opReference){
@@ -300,7 +301,7 @@ symbol linearizeNode(const linData dat){
 				if(n->val.type == opReference){
 					emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = o1});
 				}
-				if(secondaryTarget.isAddr){
+				if(extraStore){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
 				}
 				return targetReg;
@@ -530,7 +531,7 @@ void referenceOptimizationPass(){
 	uint32_t qi = 0; const uint32_t lm = quadPool.used/sizeof(quad); for(quad* q = (quad*)quadPool.pool; qi < lm; qi++, q++){
 		if(q->op == REF){ (q+1)->skippable = 1;
 			for(uint32_t offset = 2; offset < lm - qi; offset++){
-				const quad* q2 = q + offset; if(q2->op == LOAD && compareSymbols(q2->o2, q->o1)){
+				const quad* q2 = q + offset; if((q2->op == LOAD && compareSymbols(q2->o2, q->o1))){
 					(q+1)->skippable = 0;
 				}
 			}
@@ -573,7 +574,7 @@ arena linearizeAST(const node* baseNode){
 	initFrameDescPool(); frameDescriptors = newArena(sizeof(frameDescriptor) * 256);
 	curTempVReg = getUsedVRegs(); fncsEncountered = 0;
 	linearizeNode((linData){baseNode, nullSymbol, 0});
-	referenceOptimizationPass();
+	//referenceOptimizationPass(); wrong for now
 	constantFoldingPass();
 	printQuads();
 	return quadPool;

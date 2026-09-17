@@ -11,7 +11,9 @@ typedef enum{P3AC, PAST, PEDGE, PRANGE, PSRC}testFile;
 
 static const char* paths[] = {[PSRC] = pathSrc, [P3AC] = path3AC, [PAST] = pathAST, [PEDGE] = pathEdges, [PRANGE] = pathRanges}; 
 
-static FILE* curFile;
+static FILE* curFile; static bool flushStdout;
+void assignToFlush(const bool b);
+bool getFlush();
 
 void printfD(const char* specifier, ...);
 

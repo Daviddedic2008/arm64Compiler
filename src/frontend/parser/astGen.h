@@ -10,9 +10,11 @@ typedef enum nodeType : uint8_t{
 
 typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
 
+typedef enum dirtyType : bool {dirty, clean} dirtyType;
+
 typedef struct{
 	symbolType type; token varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
-	uint8_t strLen; bool isAddr; token name; uint32_t scopeDepth; uint16_t preferredReg;
+	uint8_t strLen; bool isAddr; bool isDirty; token name; uint32_t scopeDepth; uint16_t preferredReg;
 }symbol;
 
 typedef struct node{

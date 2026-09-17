@@ -1,6 +1,8 @@
 @echo off
 SETLOCAL EnableDelayedExpansion
 
+cd /d "%~dp0"
+
 for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1) do rem"') do set ESC=%%b
 set GREEN=!ESC![92m
 set RED=!ESC![91m
@@ -10,6 +12,7 @@ set RESET=!ESC![0m
 
 set "inputFile=%~1"
 set "testMode=%~2"
+set "printMode=%~2"
 
 set /a NO_ERR=0
 set /a EXPR_ERR=1
@@ -24,7 +27,7 @@ if exist "build\GPC.exe" (
     echo %GREEN%[SUCCESS] Build found.%RESET%
     echo %YELLOW%--- Running ---%RESET%
     echo.
-    build\GPC.exe %inputFile% %testMode%
+    build\GPC.exe %inputFile% %testMode% %printMode%
 ) else (
     echo.
     echo %RED%[ERROR] Compiler binary not found. %RESET%

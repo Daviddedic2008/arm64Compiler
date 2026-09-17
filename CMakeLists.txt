@@ -18,6 +18,9 @@ add_executable(GPC
 	src/tester/testGen.c
 	src/backend/regAllocator/regAllocator.c
 )
+
+set_source_files_properties(src/tester/testGen.c PROPERTIES COMPILE_DEFINITIONS "main=testGen_main")
+
 target_compile_options(${PROJECT_NAME} PRIVATE -O2)
 target_link_options(${PROJECT_NAME} PRIVATE -s)
 target_compile_options(${PROJECT_NAME} PRIVATE -fstack-usage)

@@ -8,7 +8,15 @@ char* srcPrgm; uint32_t charsUsed = 2048;
 
 const char* sourcePath = "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\test.c";
 
-BOOL SavePersistentInt(const char* valueName, DWORD value) {
+void assignToFlush(const bool b){
+	flushStdout = b;
+}
+
+bool getFlush(){
+	return flushStdout;
+}
+
+BOOL SavePersistentInt(const char* valueName, DWORD value){
     HKEY hKey;
     long status = RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\davidscompiler1234", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
     if (status != ERROR_SUCCESS) return FALSE;
@@ -16,7 +24,7 @@ BOOL SavePersistentInt(const char* valueName, DWORD value) {
     RegCloseKey(hKey);
     return (status == ERROR_SUCCESS) ? TRUE : FALSE;
 }
-BOOL LoadPersistentInt(const char* valueName, DWORD* outValue) {
+BOOL LoadPersistentInt(const char* valueName, DWORD* outValue){
     HKEY hKey;
     long status = RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\davidscompiler1234", 0, KEY_READ, &hKey);
     if (status != ERROR_SUCCESS) {
@@ -44,7 +52,7 @@ void printfD(const char* specifier, ...){
 	va_list args;
     va_start(args, specifier);
 	vfprintf(curFile, specifier, args);
-	vprintf(specifier, args);
+	if(flushStdout) vprintf(specifier, args);
 	va_end(args);
 }
 
@@ -221,7 +229,7 @@ void runTests(){
     for (DWORD i = 1; i <= numTests; i++) {
         snprintf(testSrcPath, sizeof(testSrcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\testSuites\\%lutest\\src.txt", (unsigned long)i);
         
-        snprintf(command, sizeof(command), "..\\..\\compile.bat \"%s\"", testSrcPath);
+        snprintf(command, sizeof(command), "C:\\CMake_Projects\\CortexM4CompilerV2\\compile.bat \"%s\"", testSrcPath);
 
         printf("[TEST %2lu/%2lu] Executing...", i, numTests);
         fflush(stdout);

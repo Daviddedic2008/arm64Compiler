@@ -3,7 +3,24 @@
 #include <stdlib.h>
 #include "../../tester/testGen.h"
 
-void printRanges(const sizedPool p){
+#define stackStep 2048
+sizedPool symbolStack; uint32_t curStackPos = 0;
+
+arena edgeArena;
+sizedPool ranges;
+
+void makeSymbolStack(){ symbolStack = (sizedPool){.data = malloc(sizeof(symbol) * stackStep), .size = stackStep}; }
+
+void push(const symbol s){
+	if(curStackPos >= symbolStack.size){symbolStack.size *= 2; symbolStack.data = realloc(symbolStack.data, symbolStack.size);}
+	((symbol*)symbolStack.data)[curStackPos++] = s;
+}
+
+symbol pop(){
+	return ((symbol*)symbolStack.data)[--curStackPos];
+}
+
+void printRanges(){ const sizedPool p = ranges;
 	for(uint32_t r = 0; r < p.size; r++){
 		const range rt = ((range*)p.data)[r];
 		if(rt.vReg == NULL){printfD("???\n"); continue;}
@@ -25,7 +42,9 @@ bool validType(const symbol s){
 	}
 }
 
-sizedPool constructRanges(const arena quadArena){
+bool sameSymbol(const symbol s1, const symbol s2){return s1.vReg == s2.vReg && s1.type == s2.type;}
+
+void constructRanges(const arena quadArena){
     const uint32_t nq = quadArena.used / sizeof(quad);
     const uint32_t vr = getTotalVRegs();
     sizedPool ret = {.data = malloc(sizeof(range) * vr), .size = vr};
@@ -52,7 +71,7 @@ sizedPool constructRanges(const arena quadArena){
         start -= 1;
         ((range*)ret.data)[r] = (range){.vReg = sf, .i1 = start, .i2 = end};
     }
-    return ret;
+    ranges = ret;
 }
 
 typedef struct{
@@ -62,24 +81,28 @@ typedef struct{
 
 #define startingEdges 2048
 
-arena constructEdges(const sizedPool ranges){
-	arena edgeArena = newArena(sizeof(edge) * 2048);
+void constructEdges(){
+	edgeArena = newArena(sizeof(edge) * 2048);
 	 range* r = (range*)ranges.data; for(uint32_t n = 0; n < ranges.size; n++, r++){
 		range* r2 = (range*)ranges.data; for(uint32_t ni = 0; ni < ranges.size; ni++, r2++){
 			if((r->i1 < r2->i2) && (r2->i1 < r->i2) && (n-ni) && !r2->edgesFound){
 				const edge e = (edge){.n1 = r, .n2 = r2};
-				writeElement(&edgeArena, &e, sizeof(edge));
+				r->numEdges++; r2->numEdges++; writeElement(&edgeArena, &e, sizeof(edge));
 			}
 		} r->edgesFound = 1;
-	} return edgeArena;
+	}
 }
 
-void printEdges(const arena edgeArena){
+void printEdges(){
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
 		printfD("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
 	}
 }
 
-void precolor(){
-	
+void decrementFromPool(range* const r){
+	r->offGraph = 1;
+	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
+		if(sameSymbol(*(r->vReg), *(e->n1->vReg))) e->n2->numEdges--; 
+		else if(sameSymbol(*(r->vReg), *(e->n2->vReg))) e->n1->numEdges--;
+	}
 }
