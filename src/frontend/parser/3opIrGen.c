@@ -216,11 +216,6 @@ symbol linearizeNode(const linData dat){
 				emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = *(n->symbolData)});
 			} else{emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = *(n->symbolData)}); *(n->symbolData) = targetReg;}
 		}
-		else if(n->symbolData->isAddr){
-			symbol nvr = newVReg(local); nvr.varType = n->symbolData->varType;
-			emitQuad((quad){.op = LOAD, .o1 = nvr, .o2 = *(n->symbolData)});
-			return nvr;
-		}
 		return *(n->symbolData);
 		case literalNode:{symbol tmpLit = (symbol){.type = literalSymbol, .vReg = n->val.val};
 		if(isConditional){

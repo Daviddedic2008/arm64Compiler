@@ -3,8 +3,8 @@
 typedef struct{
 	uint32_t i1, i2;
 	const symbol* vReg;
-	uint8_t edgesFound, degree;
-	uint16_t physicalReg; uint8_t offGraph; uint16_t numEdges;
+	uint8_t edgesFound, numEdges;
+	uint8_t physicalReg; uint8_t offGraph;
 }range;
 
 void printRanges();

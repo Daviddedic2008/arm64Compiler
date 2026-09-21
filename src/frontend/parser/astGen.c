@@ -51,6 +51,8 @@ arena symbolPool;
 
 uint32_t numFuncs;
 
+uint16_t loopDepth;
+
 uint32_t getNumFuncs(){return numFuncs;}
 
 uint32_t getUsedVRegs(){return numVRegs;}
@@ -138,13 +140,15 @@ node* parseArgument(){
 		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, t, literalSymbol); numVRegs--; break;
 		case identifier: switch(peekToken().type){
 			case parenthesesL: n = parseFuncCall(t); eatToken(); return n;
-			default: n = addNode(identifierNode); n->val = t; n->symbolData = getSymbol(t);
+			default: n = addNode(identifierNode); n->val = t; n->symbolData = getSymbol(t); n->symbolData->spillCost += (1 << (3 * loopDepth));
 		} break;
 		case keywordInt: case keywordChar:
 		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
 		n = addNode(declarationNode);
 		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4;
-		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : (scopeDepth ? local : global)); s->isAddr = ~scopeDepth;
+		const uint8_t glt = (scopeDepth ? local : global);
+		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : glt); s->isAddr = s->type == global;
+		s->spillCost = (1 << (3 * loopDepth));
 		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
 		s->varType = st; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
@@ -233,8 +237,10 @@ node* parseIf(){
 
 node* parseWhile(){
 	node* whileNode = addNode(conditionalNode);
+	loopDepth++;
 	addChildFromPtr(whileNode, parseExpression(0)); expect(curlyBraceL); deepenScope();
 	addChildFromPtr(whileNode, parseBody());
+	loopDepth--;
 	whileNode->val = (token){.type = keywordWhile};
 	return whileNode;
 } 
@@ -282,7 +288,7 @@ node* parseBody(){
 
 node constructTree(tokenArray arr){
 	tokensScanned = 0; stackDepth = 0; scopeDepth = 0;
-	withinFunctionDef = false; numVRegs = 0; numFuncs = 0;
+	withinFunctionDef = false; numVRegs = 0; numFuncs = 0; loopDepth = 0;
 	srcArr = arr; initPools();
 	node* b = parseBody();
 	return *b;

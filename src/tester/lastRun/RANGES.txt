@@ -1,3 +1,5 @@
-RANGE(0 : 2)<<global_id(0)_INT>>
-RANGE(2 : 3)<<loc_id(1)_INT>>
-RANGE(3 : 4)<<loc_id(2)_INT>>PREF[x0]
+RANGE(1 : 4)<<arg_0_INT>>PREF[x0] COST<3>
+RANGE(2 : 2)<<arg_1_INT>>PREF[x1] COST<1>
+RANGE(6 : 8)<<loc_id(2)_INT>>PREF[x0] COST<2>
+RANGE(7 : 9)<<loc_id(3)_INT>>PREF[x1] COST<2>
+RANGE(12 : 12)<<loc_id(4)_INT>> COST<1>

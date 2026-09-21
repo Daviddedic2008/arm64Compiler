@@ -1,5 +1,6 @@
 #include "regAllocator.h"
 #include <stdint.h>
+#include <float.h>
 #include <stdlib.h>
 #include "../../tester/testGen.h"
 
@@ -25,7 +26,8 @@ void printRanges(){ const sizedPool p = ranges;
 		const range rt = ((range*)p.data)[r];
 		if(rt.vReg == NULL){printfD("???\n"); continue;}
 		printfD("RANGE(%d : %d)<<", rt.i1, rt.i2); printSymbol(*rt.vReg); printfD(">>");
-		if(rt.vReg->preferredReg) printfD("PREF[x%d]", rt.vReg->preferredReg-1); printfD("\n");
+		if(rt.vReg->preferredReg) printfD("PREF[x%d]", rt.vReg->preferredReg-1); 
+		printfD(" COST<%d>", rt.vReg->spillCost);printfD("\n");
 	}
 }
 
@@ -104,5 +106,27 @@ void decrementFromPool(range* const r){
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
 		if(sameSymbol(*(r->vReg), *(e->n1->vReg))) e->n2->numEdges--; 
 		else if(sameSymbol(*(r->vReg), *(e->n2->vReg))) e->n1->numEdges--;
+	}
+}
+
+void chaitinPass(){
+	// k is max physical regs
+	// check for nodes of degree < k
+	// pop them to stack
+	// when all are popped if any are left degree >= k put them on the spill stack in heuristic order(most likely to spill last)
+	// go through the stack element 0 to element end and assign physical regs
+	// if spilling is required: add stores loads and split live ranges into smaller ranges. DEF -> STORE, LOAD -> USE
+	// MAKE SURE TO CHECK FOR INFINITE SPILL LOOPS
+	while(1){ bool ret = 1;
+		for(uint32_t r = 0; r < ranges.size; r++){
+			const range* rt = ((range*)ranges.data) + r;
+			if(rt->numEdges < numGPRegs){
+				push(*(rt->vReg)); ret = 0;
+				decrementFromPool(rt);
+			}
+		} if(ret){float minWeight = FLT_MAX; int64_t bestIdx = -1; for(uint32_t r = 0; r < ranges.size; r++){
+				const range rt = ((range*)ranges.data)[r];
+			}
+		}
 	}
 }

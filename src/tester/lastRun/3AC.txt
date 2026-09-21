@@ -1,6 +1,15 @@
-STORE #6 -> [global_id(0)_INT]
 
-DEF helper
-loc_id(1)_INT = LOAD global_id(0)_INT
-loc_id(2)_INT = loc_id(1)_INT ADD #1
-RET loc_id(2)_INT
+DEF sum
+arg_0_INT = MOV x0
+arg_1_INT = MOV x1
+arg_0_INT = LOADIMM #0
+RET arg_0_INT
+
+DEF main
+loc_id(2)_INT = LOADIMM #5
+loc_id(3)_INT = LOADIMM #6
+x0 = MOV loc_id(2)_INT
+x1 = MOV loc_id(3)_INT
+ALIGN
+CALL sum
+loc_id(4)_INT = MOV x0
