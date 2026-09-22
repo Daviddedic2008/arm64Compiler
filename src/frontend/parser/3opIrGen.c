@@ -17,9 +17,9 @@ const char* op_names[] = {
     [ADD] = "ADD", [SUB] = "SUB", [NEG] = "NEG", [MUL] = "MUL", [DIV] = "DIV", 
 	[AND] = "AND", [NOT] = "NOT", [OR] = "OR", [XOR] = "XOR",
     [LOAD] = "LOAD", [STORE] = "STORE", [STACK] = "STACK", [GLOBAL] = "GLOBAL", [MOV] = "MOV", [LOADIMM] = "LOADIMM", [CMP] = "CMP", 
-	[JMP] = "JMP", [JMPCND] = "JMPCND", [SETLABEL] = "SETLABEL", [READFLAGS] = "READFLAGS",
+	[JMP] = "JMP_LBL", [JMPABS] = "JMP", [JMPCND] = "JMPCND_LBL", [SETLABEL] = "SETLABEL", [READFLAGS] = "READFLAGS",
     [CALL] = "CALL", [ARG] = "ARG", [FNCDEF] = "FNCDEF", [RET] = "RET", [ALIGN] = "ALIGN", [REF] = "REF", [DEREF] = "DEREF", [REF_O]= "REF_OFF", [DEREF_O] = "DEREF_OFF", 
-	[PUSH] = "PUSH", [POP] = "POP"
+	[PUSH] = "PUSH", [POP] = "POP", [LABEL_MAP] = "<DATA>LABEL_MAP", [WRITE_LABEL] = "WRITE"
 };
 
 const char* flag_names[] = {
@@ -70,13 +70,14 @@ void printQuad(quad q) {
         case STORE:
             printfD("STORE "); printSymbol(q.o2); printfD(" -> ["); printSymbol(q.o1); printfD("]");
             break;
+		case LABEL_MAP: printSymbol(q.o1); printfD(" = %s", op_names[q.op]); break;
         case JMPCND: printfD("IF "); printSymbol(q.o2); printfD(" JMP label_%d", q.o1.vReg); break;
         case CMP: printfD("CMP "); printSymbol(q.o1); printfD(", "); printSymbol(q.o2); break;
 		case SETLABEL: printSymbol(q.o1); printfD(":"); break;
 		case READFLAGS: printSymbol(q.o1); printfD(" = check "); printSymbol(q.o2); break;
         case FNCDEF: printfD("\nDEF "); printSymbol(q.o1); break;
         case ALIGN: printfD(op_names[q.op]); break;
-        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case STACK: case GLOBAL: printfD("%s ", op_names[q.op]); printSymbol(q.o1); break;
+        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case JMPABS: case STACK: case GLOBAL: case WRITE_LABEL: printfD("%s ", op_names[q.op]); printSymbol(q.o1); break;
         case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
         default: printfD("UNKNOWN_OP(%d)", q.op); break;
     }
@@ -488,6 +489,37 @@ symbol linearizeNode(const linData dat){
 					emitQuad((quad){.op = SETLABEL, sb});
 					curEndLbl = prevEndL; curStartLbl = prevStartL;
 					break;
+				}
+				case keywordSwitch:{
+					const symbol cond = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+					node* cn = n->firstChild->sibling; int32_t minCase = INT_MAX, maxCase = INT_MIN, numCases = 0;
+					while(cn != NULL){
+						numCases++;
+						const int32_t cc = cn->firstChild->val.val;
+						if(cc < minCase) minCase = cc;
+						else if(cc > maxCase) maxCase = cc;
+						cn = cn->sibling;
+					} cn = n->firstChild->sibling; 
+					const int32_t range = maxCase - minCase; bool mapLookup = ((float)numCases / (range + 1)) >= 0.4f && range < 256;
+					if(mapLookup){
+						symbol mapOffset = newVReg(keywordIntPtr);
+						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset});
+						for(uint32_t lbl = 0; lbl <= range; lbl++){
+							emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = numLabels++}});
+						}
+						const symbol tempAddr = newVReg(keywordInt);
+						emitQuad((quad){.op = MUL, .o1 = tempAddr, .o2 = (symbol){.type = literalSymbol, .vReg = 4}, cond});
+						emitQuad((quad){.op = ADD, .o1 = tempAddr, .o2 = tempAddr, .o3 = mapOffset});
+						emitQuad((quad){.op = JMPABS, .o1 = tempAddr});
+						const uint32_t svl = curEndLbl;
+						curEndLbl = numLabels++; while(cn != NULL){
+							emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLbl + cn->firstChild->val.val - minCase}});
+							linearizeNode((linData){cn->firstChild->sibling, nullSymbol, 0});
+							cn = cn->sibling;
+						}
+						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = curEndLbl}});
+						curEndLbl = svl; 
+					}
 				}
 			}
 			return nullSymbol;

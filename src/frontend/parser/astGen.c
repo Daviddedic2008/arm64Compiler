@@ -282,32 +282,28 @@ node* parseFuncDef(){
 	return fdNode;
 }
 
-void parseNext(node* const ret, const token ct){
-	switch(ct.type){
-		case endStatement: eatToken(); return;
-		case keywordContinue: case keywordBreak: case keywordReturn:
-		node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
-		if(peekToken().type == keywordReturn) addChildFromPtr(statNode, parseExpression(0));
-		addChildFromPtr(ret, statNode); return;
-		case curlyBraceL: eatToken(); deepenScope(); addChildFromPtr(ret, parseBody()); return;
-		case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); return;
-		case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); return;
-		case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); return;
-		case keywordInt: case keywordChar: case keywordVoid: uint8_t pd = 0; if(peekAdvToken(1).type == opMul) pd = 1;
-		while(peekAdvToken(pd+2).type == opMul){pd++;} if(peekAdvToken(2+pd).type == parenthesesL && peekAdvToken(1+pd).type == identifier){
-			node* tmp = parseFuncDef();
-			addChildFromPtr(ret, tmp); return;
-		}
-		if(ct.type == keywordVoid) return;
-		default: addChildFromPtr(ret, parseExpression(0));
-	} eatToken();
-}
-
 node* parseBody(){
 // parse until located } or EOF 
 	node* ret = addNode(bodyNode); token ct;
 	while(ct = peekToken(), !(ct.type == nullToken | ct.type == curlyBraceR)){
-		parseNext(ret, ct);
+		switch(ct.type){
+			case endStatement: break;
+			case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); continue;
+			case keywordContinue: case keywordBreak: case keywordReturn:
+			node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
+			if(peekToken().type != endStatement) addChildFromPtr(statNode, parseExpression(0));
+			addChildFromPtr(ret, statNode); break;
+			case curlyBraceL: eatToken(); deepenScope(); addChildFromPtr(ret, parseBody()); continue;
+			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
+			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
+			case keywordInt: case keywordChar: case keywordVoid: uint8_t pd = 0; if(peekAdvToken(1).type == opMul) pd = 1;
+			while(peekAdvToken(pd+2).type == opMul){pd++;} if(peekAdvToken(2+pd).type == parenthesesL && peekAdvToken(1+pd).type == identifier){
+				node* tmp = parseFuncDef();
+				addChildFromPtr(ret, tmp); continue;
+			}
+			if(ct.type == keywordVoid) break;
+			default: addChildFromPtr(ret, parseExpression(0));
+		} eatToken();
 	} if(ct.type == curlyBraceR) returnScope(); eatToken();
 	return ret;
 }
@@ -316,7 +312,24 @@ node* parseUntil(const tokenType t){
 	// used for case statements
 	node* ret = addNode(bodyNode); token ct;
 	while(ct = peekToken(), !(ct.type == nullToken || ct.type == curlyBraceR || ct.type == t)){
-		parseNext(ret, ct);
+		switch(ct.type){
+			case endStatement: break;
+			case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); continue;
+			case keywordContinue: case keywordBreak: case keywordReturn:
+			node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
+			if(peekToken().type != endStatement) addChildFromPtr(statNode, parseExpression(0));
+			addChildFromPtr(ret, statNode); break;
+			case curlyBraceL: eatToken(); deepenScope(); addChildFromPtr(ret, parseBody()); continue;
+			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
+			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
+			case keywordInt: case keywordChar: case keywordVoid: uint8_t pd = 0; if(peekAdvToken(1).type == opMul) pd = 1;
+			while(peekAdvToken(pd+2).type == opMul){pd++;} if(peekAdvToken(2+pd).type == parenthesesL && peekAdvToken(1+pd).type == identifier){
+				node* tmp = parseFuncDef();
+				addChildFromPtr(ret, tmp); continue;
+			}
+			if(ct.type == keywordVoid) break;
+			default: addChildFromPtr(ret, parseExpression(0));
+		} eatToken();
 	} if(ct.type == curlyBraceR) returnScope(); if(ct.type != t) eatToken();
 	return ret;
 }
