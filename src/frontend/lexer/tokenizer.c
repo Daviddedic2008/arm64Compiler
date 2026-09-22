@@ -21,6 +21,7 @@ bool isDelimiter(const char c){
 }
 int8_t isSingleCharToken(const char c){
 	switch(c){
+		case ':': return colon;
 		case '+': return opPlus;
 		case '*': return opMul;
 		case '/': return opDiv;
@@ -47,7 +48,7 @@ typedef struct{char* str; uint8_t type;}keyData;
 
 keyData keywords[] = {
 	{"int", keywordInt}, {"char", keywordChar}, {"void", keywordVoid}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile},
-	{"return", keywordReturn}, {"continue", keywordContinue}, {"break", keywordBreak}
+	{"return", keywordReturn}, {"continue", keywordContinue}, {"break", keywordBreak}, {"case", keywordCase}, {"switch", keywordSwitch}
 }; const uint8_t numKeywords = sizeof(keywords) / sizeof(keyData);
 
 void verifyAlphabeticalOrder(){

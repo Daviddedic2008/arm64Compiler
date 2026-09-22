@@ -6,8 +6,8 @@ typedef enum tokenType : uint8_t{
 	opPlus, opMinus, opDecrement, opIncrement, opDPlus, opDMinus, opEqual, opMul, opDiv, opNegate, opLogicalOr, opLogicalAnd, opLogicalNot, opBitwiseNot, opBitwiseOr, opBitwiseXor,
 	opShiftRight, opShiftLeft, opBitwiseAnd, opDereference, opReference, opAccess, opCmpEquals, opCmpGreater, opCmpLess, opCmpGrEq, opCmpLeEq, opCmpNe,
 	curlyBraceR, curlyBraceL, parenthesesL, parenthesesR, squareBraceL, squareBraceR,
-	keywordIf, keywordElse, keywordWhile, keywordInt, keywordChar, keywordIntPtr, keywordCharPtr, keywordVoidPtr, keywordVoid, keywordReturn, keywordContinue, keywordBreak,
-	endStatement, identifier, literal, nullToken
+	keywordIf, keywordElse, keywordWhile, keywordSwitch, keywordCase, keywordFallthrough, keywordInt, keywordChar, keywordIntPtr, keywordCharPtr, keywordVoidPtr, keywordVoid, keywordReturn, keywordContinue, keywordBreak,
+	endStatement, colon, identifier, literal, nullToken
 }tokenType;
 
 typedef struct{
