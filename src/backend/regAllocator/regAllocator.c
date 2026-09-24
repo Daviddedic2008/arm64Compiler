@@ -71,6 +71,7 @@ void constructRanges(const arena quadArena){
 			if(preReg != 0 && sf != NULL) sf->preferredReg = preReg;
         }
         start -= 1;
+		sf->physicalReg = -1; 
         ((range*)ret.data)[r] = (range){.vReg = sf, .i1 = start, .i2 = end};
     }
     ranges = ret;
@@ -109,6 +110,21 @@ void decrementFromPool(range* const r){
 	}
 }
 
+void findFreeRegister(symbol* const srcReg){
+	bool registerTaken[numGPRegs] = {0};
+	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
+		int16_t r = -1;
+		if(sameSymbol(*(srcReg), *(e->n1->vReg))){
+			r = e->n1->vReg->physicalReg;
+		}
+		else if(sameSymbol(*(srcReg), *(e->n2->vReg))){
+			r = e->n2->vReg->physicalReg;
+		}
+		if(r != -1) registerTaken[r] = true; 	
+	} if(srcReg->preferredReg) if(!registerTaken[srcReg->preferredReg-1]){srcReg->physicalReg = srcReg->preferredReg-1; return;}
+	for(uint32_t r = 0; r < numGPRegs; r++) if(!registerTaken[numGPRegs]){srcReg->physicalReg = r; return;}
+}
+
 void chaitinPass(){
 	// k is max physical regs
 	// check for nodes of degree < k
@@ -126,7 +142,19 @@ void chaitinPass(){
 			}
 		} if(ret){float minWeight = FLT_MAX; int64_t bestIdx = -1; for(uint32_t r = 0; r < ranges.size; r++){
 				const range rt = ((range*)ranges.data)[r];
+				if(rt.vReg->spillCost < minWeight) minWeight = rt.vReg->spillCost, bestIdx = r;
 			}
+			if(bestIdx != -1){push(*((range*)ranges.data + bestIdx)->vReg); decrementFromPool((range*)ranges.data + bestIdx);}
+		}
+	} bool anySpill = 0;
+	for(uint32_t r = 0; r < ranges.size; r++){
+		const symbol* rt = (symbol*)symbolStack.data + r;
+		findFreeRegister(rt);
+		if(rt->physicalReg == -1){ anySpill = 1;
+			// insert spill code & split ranges
+		}
+		if(anySpill){
+			// rebuild ranges and rerun chaitin-briggs from start
 		}
 	}
 }

@@ -2,6 +2,7 @@
 #include "../../helper/arenaAlloc.h"
 #include "../../tester/testGen.h"
 #include <string.h>
+#include <stdarg.h>
 
 /*
 arena allocator for nodes, start with body node. child nodes will be allocated in linked list type of form.
@@ -120,7 +121,7 @@ token peekAdvToken(const uint8_t i){return tokensScanned+i >= srcArr.numTokens ?
 token eatToken(){return tokensScanned++ >= srcArr.numTokens ? (token){.type = nullToken} : *(srcArr.tokens++);}
 token expect(const uint8_t type){if(peekToken().type == type){return eatToken();} else{longjmp(compRetEnv, 1);}}
 
-node* parseBody(); node* parseUntil(const tokenType t); node* parseExpression(const uint16_t minPrecedence); node* parseFuncCall(const token t);
+node* parseBody(); node* parseUntil(const uint32_t numTokens, ...); node* parseExpression(const uint16_t minPrecedence); node* parseFuncCall(const token t);
 
 bool withinFunctionDef;
 
@@ -248,10 +249,10 @@ node* parseWhile(){
 
 node* parseCase(){
 	node* caseNode = addNode(statementNode);
-	caseNode->val = (token){.type = keywordCase};
-	expect(keywordCase);
-	addChildFromPtr(caseNode, parseArgument());
-	expect(colon); addChildFromPtr(caseNode, parseUntil(keywordCase));
+	caseNode->val = (token){.type = eatToken().type};
+	
+	if(caseNode->val.type == keywordCase) addChildFromPtr(caseNode, parseArgument());
+	expect(colon); addChildFromPtr(caseNode, parseUntil(2, keywordCase, keywordDefault));
 	return caseNode;
 }
 
@@ -259,7 +260,7 @@ node* parseSwitch(){
 	node* switchNode = addNode(conditionalNode);
 	addChildFromPtr(switchNode, parseExpression(0)); expect(curlyBraceL); deepenScope();
 	switchNode->val = (token){.type = keywordSwitch};
-	while(peekToken().type == keywordCase){
+	tokenType t; while(t = peekToken().type, (t == keywordCase || t == keywordDefault)){
 		addChildFromPtr(switchNode, parseCase());
 	}
 	return switchNode;
@@ -308,10 +309,16 @@ node* parseBody(){
 	return ret;
 }
 
-node* parseUntil(const tokenType t){
+node* parseUntil(const uint32_t numTokens, ...){
 	// used for case statements
+	va_list args;
+	va_start(args, numTokens);
+	int tokensToCheck[numTokens];
+	for(int i = 0; i < numTokens; i++) tokensToCheck[i] = va_arg(args, int);
+	va_end(args);
 	node* ret = addNode(bodyNode); token ct;
-	while(ct = peekToken(), !(ct.type == nullToken || ct.type == curlyBraceR || ct.type == t)){
+	while(ct = peekToken(), !(ct.type == nullToken || ct.type == curlyBraceR)){
+		for(int i = 0; i < numTokens; i++) if(tokensToCheck[i] == ct.type) goto endWhileUntil;
 		switch(ct.type){
 			case endStatement: break;
 			case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); continue;
@@ -330,8 +337,8 @@ node* parseUntil(const tokenType t){
 			if(ct.type == keywordVoid) break;
 			default: addChildFromPtr(ret, parseExpression(0));
 		} eatToken();
-	} if(ct.type == curlyBraceR) returnScope(); if(ct.type != t) eatToken();
-	return ret;
+	} endWhileUntil:; if(ct.type == curlyBraceR) returnScope(); for(int i = 0; i < numTokens; i++) if(tokensToCheck[i] == ct.type) goto returnUntil; eatToken();
+	returnUntil:; return ret;
 }
 
 node constructTree(tokenArray arr){

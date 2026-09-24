@@ -501,24 +501,65 @@ symbol linearizeNode(const linData dat){
 						cn = cn->sibling;
 					} cn = n->firstChild->sibling; 
 					const int32_t range = maxCase - minCase; bool mapLookup = ((float)numCases / (range + 1)) >= 0.4f && range < 256;
+					mapLookup = 0;
 					if(mapLookup){
-						symbol mapOffset = newVReg(keywordIntPtr);
+						symbol mapOffset = newVReg(keywordIntPtr); const uint32_t defaultLabel = numLabels++;
 						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset});
-						for(uint32_t lbl = 0; lbl <= range; lbl++){
-							emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = numLabels++}});
+						for(uint32_t lbl = 0; lbl <= range; lbl++){ node* cn2 = n->firstChild->sibling; bool foundCase = 0;
+							while(cn2 != NULL){
+								if(cn2->firstChild->val.val == lbl && cn2->val.type != keywordDefault){
+									const uint32_t nr = numLabels++; foundCase = 1;
+									emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = nr}});
+								}
+								cn2 = cn2->sibling;
+							} if(!foundCase) emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
+							continueFor:;
 						}
 						const symbol tempAddr = newVReg(keywordInt);
-						emitQuad((quad){.op = MUL, .o1 = tempAddr, .o2 = (symbol){.type = literalSymbol, .vReg = 4}, cond});
+						emitQuad((quad){.op = MUL, .o1 = tempAddr, .o2 = (symbol){.type = literalSymbol, .vReg = 8}, cond});
 						emitQuad((quad){.op = ADD, .o1 = tempAddr, .o2 = tempAddr, .o3 = mapOffset});
 						emitQuad((quad){.op = JMPABS, .o1 = tempAddr});
-						const uint32_t svl = curEndLbl;
+						const uint32_t svl = curEndLbl; uint32_t offsetLbl = 0;
 						curEndLbl = numLabels++; while(cn != NULL){
-							emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLbl + cn->firstChild->val.val - minCase}});
-							linearizeNode((linData){cn->firstChild->sibling, nullSymbol, 0});
-							cn = cn->sibling;
+							if(cn->val.type == keywordDefault){
+								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
+								linearizeNode((linData){cn->firstChild, nullSymbol, 0});
+							}
+							else{
+								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLbl + offsetLbl}});
+								linearizeNode((linData){cn->firstChild->sibling, nullSymbol, 0});
+							}
+							cn = cn->sibling; offsetLbl++;
 						}
 						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = curEndLbl}});
 						curEndLbl = svl; 
+					}
+					else{
+						// ugly if else chains
+						node* cn = n->firstChild->sibling;
+						const symbol endLabel = (symbol){.type = label, .vReg = numLabels++};
+						const symbol defaultLabel = (symbol){.type = label, .vReg = numLabels++};
+						const uint32_t sv = curEndLbl; curEndLbl = endLabel.vReg;
+						const uint32_t startLabel = numLabels;
+						while(cn != NULL){
+							if(cn->val.type == keywordDefault) goto endCnLoop;
+							emitQuad((quad){.op = CMP, .o1 = cond, .o2 = (symbol){.type = literalSymbol, .vReg = cn->firstChild->val.val}});
+							emitQuad((quad){.op = JMPCND, .o1 = numLabels++, .o2 = (symbol){.type = flag, .vReg = flagEq}});
+							endCnLoop:; cn = cn->sibling;
+						} emitQuad((quad){.op = JMP, .o1 = defaultLabel});
+						emitQuad((quad){.op = SETLABEL, .o1 = endLabel});
+						cn = n->firstChild->sibling; uint32_t offset = 0; while(cn != NULL){
+							if(cn->val.type == keywordDefault){
+								emitQuad((quad){.op = SETLABEL, .o1 = defaultLabel});
+								linearizeNode((linData){cn->firstChild, nullSymbol, 0});
+							}
+							else{
+								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLabel + offset}});
+								linearizeNode((linData){cn->firstChild->sibling, nullSymbol, 0});
+								if(cn->sibling != NULL) emitQuad((quad){.op = JMP, .o1 = (symbol){.type = label, .vReg = startLabel + offset + 1}});
+							} offset++;
+							cn = cn->sibling;
+						} curEndLbl = sv;
 					}
 				}
 			}
