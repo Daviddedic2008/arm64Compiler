@@ -1,5 +1,4 @@
 #include "astGen.h"
-#include "../../helper/arenaAlloc.h"
 #include "../../tester/testGen.h"
 #include <string.h>
 #include <stdarg.h>
@@ -50,6 +49,7 @@ arena nodePool; jmp_buf compRetEnv;
 
 uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs;
 arena symbolPool;
+arena* getSymbolPool(){return &symbolPool;}
 
 uint32_t numFuncs;
 
@@ -68,6 +68,9 @@ symbol constructSymbol(const token name, const token varType, const symbolType t
 
 symbol* addSymbol(const token name, const token varType, const symbolType type){
 	const symbol tmp = constructSymbol(name, varType, type);
+	return writeElement(&symbolPool, &tmp, sizeof(symbol));
+}
+symbol* addSymbolPre(const symbol tmp){
 	return writeElement(&symbolPool, &tmp, sizeof(symbol));
 }
 

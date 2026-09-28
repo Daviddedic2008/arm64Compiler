@@ -1,1 +1,3 @@
-RANGE(1 : 4)<<loc_id(0)_INT>> COST<2>
+RANGE(1 : 3)<<loc_id(0)_INT>> COST<2>
+RANGE(2 : 4)<<loc_id(1)_INT>> COST<2>
+RANGE(3 : 3)<<loc_id(2)_INT>> COST<1>

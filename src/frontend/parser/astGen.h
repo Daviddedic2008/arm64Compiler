@@ -2,19 +2,20 @@
 #include <stdio.h>
 #include <setjmp.h>
 #include <stdlib.h>
+#include "../../helper/arenaAlloc.h"
 #include "../lexer/tokenizer.h"
 
 typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode, statementNode
 }nodeType;
 
-typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
+typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, temp, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
 
 typedef enum dirtyType : bool {dirty, clean} dirtyType;
 
 typedef struct{
 	symbolType type; token varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
-	uint8_t strLen; bool isAddr; bool isDirty; token name; uint32_t scopeDepth; uint16_t preferredReg; uint16_t spillCost; uint16_t physicalReg;
+	uint8_t strLen; bool isAddr; bool isDirty; token name; uint32_t scopeDepth; uint16_t preferredReg; uint16_t spillCost; uint32_t physicalReg;
 }symbol;
 
 typedef struct node{
@@ -30,4 +31,8 @@ void setJmpBuf(jmp_buf f);
 
 uint32_t getUsedVRegs();
 
+arena* getSymbolPool();
+
 uint32_t getNumFuncs();
+
+symbol* addSymbolPre(const symbol tmp);

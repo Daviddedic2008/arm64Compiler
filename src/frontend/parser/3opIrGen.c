@@ -43,9 +43,12 @@ void printSymbol(symbol s) {
             else if (s.vReg == 29) printfD("fp");
             else printfD("x%d", s.vReg);
             break;
-        case local: printfD("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
-        case global: printfD("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
+        case local: if(s.physicalReg) goto printPhysical; printfD("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
+        case global: if(s.physicalReg) goto printPhysical; printfD("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
+		case temp: if(s.physicalReg) goto printPhysical; printfD("temp_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case arg: printfD("arg_%d_", s.vReg); printType(s.varType); goto dop;
+		printPhysical:
+		printfD("x%d", s.physicalReg-1); break;
 		dop:
 		if(s.szArr) printfD("[%d]", s.szArr);
 		break;
@@ -154,9 +157,8 @@ frameDescriptor* newDescriptor(){
 }
 
 symbol newVReg(const tokenType varType){
-	symbol nr; if(fncsEncountered)
-		nr = (symbol){.type = local, .vReg = curTempVReg++, .varType = (token){.type = varType}};
-	else nr = (symbol){.type = global, .vReg = curTempVReg++, .varType = (token){.type = varType}};
+	symbol nr;
+	nr = (symbol){.type = fncsEncountered ? local : temp, .vReg = curTempVReg++, .varType = (token){.type = varType}};
 	writeElement(&frameDescriptorVregs, &nr, sizeof(symbol));
 	if(curDescriptor != NULL) curDescriptor->numVars++;
 	return nr;
@@ -192,6 +194,10 @@ void printQuads(){
 	for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++){
 		printQuad(((quad*)quadPool.pool)[qi]);
 	}
+}
+
+arena* getQuadArena(){
+	return &quadPool;
 }
 
 int evalImm(const tokenType op, const symbol o1, const symbol o2){
@@ -623,6 +629,7 @@ void constantFoldingPass(){
 					symbol* const literalC = q->o2.type == literalSymbol ? (newOpReg = &q->o3, &q->o2) : (newOpReg = &q->o2, &q->o3);
 					literalC->vReg += (q->op == SUB ? -1 : 1) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
 				}
+				break;
 			}
 			case MUL: case DIV:{
 				const bool isChain = compareSymbols(q->o2, prevOp->o1) ? q->o3.type == literalSymbol : (compareSymbols(q->o3, prevOp->o1) ? q->o2.type == literalSymbol : 0);
@@ -632,6 +639,7 @@ void constantFoldingPass(){
 					literalC->vReg += (q->op != prevOp->op) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
 					if(literalC->vReg < 0){literalC->vReg = -1 * literalC->vReg; q->op = q->op == MUL ? DIV : MUL;}
 				}
+				break;
 			}
 			case NEG:{
 			}
@@ -649,6 +657,5 @@ arena linearizeAST(const node* baseNode){
 	linearizeNode((linData){baseNode, nullSymbol, 0});
 	//referenceOptimizationPass(); wrong for now
 	constantFoldingPass();
-	printQuads();
 	return quadPool;
 }

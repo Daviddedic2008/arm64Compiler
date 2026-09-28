@@ -36,6 +36,7 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[36m3AC IR\x1b[0m\n\n");
 		switchFile(P3AC);
 		arena quads = linearizeAST(&b);
+		printQuads();
 		constructRanges(quads);
 		printfCND("\n\n");
 		printfCND("\x1b[1;32mFound Live Ranges\x1b[0m\n\n");
@@ -48,6 +49,10 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[36mEdges\x1b[0m\n\n");
 		switchFile(PEDGE);
 		printEdges();
+		chaitinPass();
+		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
+		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
+		printQuads();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();
 	} else{
 		fprintf(stderr, "ERRORS ENCOUNTERED IN COMPILATION\n\n");

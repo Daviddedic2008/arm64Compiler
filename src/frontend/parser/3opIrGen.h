@@ -1,6 +1,5 @@
 // 3 operand IR gen
 #include <stdint.h>
-#include "../../helper/arenaAlloc.h"
 #include "astGen.h"
 
 typedef enum operation{
@@ -16,14 +15,21 @@ typedef enum flags{
 	flagNe, flagLe, flagGe, flagLt, flagGt, flagEq
 }flagEnum;
 
+typedef enum refactorTypes{rfReplace, rfNew}refactorTypes;
+
 typedef struct{
 	operation op;
 	symbol o1, o2, o3;
-	bool skippable;
+	uint8_t skippable; uint8_t refactorType;
 }quad;
 
 arena linearizeAST(const node* baseNode);
 
 uint32_t getTotalVRegs();
+arena* getQuadArena();
 
 void printSymbol(symbol s);
+
+void printQuads();
+
+symbol newVReg(const tokenType varType);

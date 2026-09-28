@@ -2,7 +2,6 @@
 #include <stdlib.h>
 
 char* loadFileToBuffer(const char* filename) {
-	printf("%s\n", filename);
     FILE* file = fopen(filename, "rb");
     if (!file) {
         perror("Error opening file");

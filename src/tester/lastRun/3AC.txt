@@ -1,17 +1,7 @@
 
 DEF main
 loc_id(0)_INT = LOADIMM #5
-CMP loc_id(0)_INT, #1
-IF f_EQ JMP label_0
-CMP loc_id(0)_INT, #5
-IF f_EQ JMP label_0
-JMP_LBL label_1
-label_0:
-label_2:
-JMP_LBL label_0
-JMP_LBL label_3
-label_3:
-JMP_LBL label_0
-JMP_LBL label_4
-label_1:
-JMP_LBL label_0
+loc_id(1)_INT = LOADIMM #6
+loc_id(2)_INT = MOV loc_id(0)_INT
+loc_id(1)_INT = LOADIMM #7
+RET #0

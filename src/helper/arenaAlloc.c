@@ -26,3 +26,8 @@ void printArena(arena a, int(*printFunc)(void*)){
 		tmp += printFunc(tmp);
 	}
 }
+
+void addEl(sizedPool* p, const void* data, const uint32_t wrSz){
+	p->data = realloc(p->data, p->size + wrSz);
+	memcpy(p->data + p->size, data, wrSz);
+}
