@@ -94,6 +94,32 @@ void constructEdges(){
 	}
 }
 
+void cfgEdges(){
+	// change quadgen to save a separate stack of labels and their related quad indices
+	// will massively speed up pass 2
+	
+	// to construct blocks run 3 passes
+	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
+	// make blocks based on sequential "leader" quads or quad0 and quadEND
+	
+	
+	// pass 2, construct jump links. 
+	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
+	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
+	// if no absolute jump is found, add next sequential block as potential branch(fallthrough)
+	// each block also has to mark what blocks potentially branch TO it, so this goes both ways
+	
+	
+	// pass 3, do depth first search on ur blocks to get to the deepest blocks
+	// for each block, do this
+	// maintain live range bitvector LRB, if block has another one that potentially branches to it, start with the stack that previous block sends
+	// vReg being written to is called vReg WRITE
+	// within blocks, go from last quad up to first quad
+	// for each quad, first write an edge between vReg WRITE and all vRegs in LRB
+	// then, remove vReg WRITE from LRB
+	// at end of block, forward the remaining LRB to its parents
+}
+
 void printEdges(){
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
 		printfD("EDGE<<R(%d, %d) : R(%d, %d)>>\n", e->n1->i1, e->n1->i2, e->n2->i1, e->n2->i2);
