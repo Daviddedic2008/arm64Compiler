@@ -33,3 +33,10 @@ void printSymbol(symbol s);
 void printQuads();
 
 symbol newVReg(const tokenType varType);
+
+typedef struct{
+	uint32_t qId, label;
+}lblInd;
+
+lblInd* getLblInds();
+uint32_t getNumLbls();

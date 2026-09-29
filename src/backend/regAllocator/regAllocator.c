@@ -94,14 +94,39 @@ void constructEdges(){
 	}
 }
 
+typedef struct{
+	uint64_t w1 : 32;
+	uint64_t w2 : 32;
+}w64;
+
+typedef struct{
+	uint32_t q1, q2;
+	uint32_t numPBranches, numParents;
+	struct block* pBranches;
+	struct block* parentBlocks;
+}block;
+
+bool isConditionalJump(w64 w){return w.w2 == (0xFFFFFFFF - 1);}
 void cfgEdges(){
+	// DONE
 	// change quadgen to save a separate stack of labels and their related quad indices
 	// will massively speed up pass 2
 	
 	// to construct blocks run 3 passes
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
-	
+	const arena* quadArena = getQuadArena();
+	sizedPool jumpIds = (sizedPool){.data = quadArena->pool + quadArena->used, .size = 0};
+	const quad* q = (quad*)quadArena->pool; for(uint32_t qi = 0; qi < quadArena->used/sizeof(quad); qi++, q++){
+		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
+			const w64 w64w = {qi, (0xFFFFFFFF - q->op) == JMPCND}; 
+			quadArena.writeElement(quadArena, &w64w, sizeof(uint64_t));
+			jumpIds.size++;
+		}
+	}
+	// sort!!
+	const uint32_t numQids = getNumLbls() + jumpIds.size;
+	insertionSort(getLblInds(), sizeof(lblInd), numQids, NULL);
 	
 	// pass 2, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
@@ -109,6 +134,13 @@ void cfgEdges(){
 	// if no absolute jump is found, add next sequential block as potential branch(fallthrough)
 	// each block also has to mark what blocks potentially branch TO it, so this goes both ways
 	
+	// BLOCK CONSTRUCTION DETAILS:
+	// allocate pBranches and parentBlocks in quadArena
+	// maintain 2 stacks, finished blocks(obv) and requested children blocks(store when a block needs to jump to another but the one being jumped to isnt constructed)
+	// when you start making a block, check if its qids fall within any requested blocks. if so, update both block that requested and this one with children/parent pointers.
+	// when you find a jump within your block and are looking at which block it will jump to, first call getLblQID to get quad ID.
+	// check if quad ID is in any blocks that were already made. if so, just add that as your child. if not, push ur quad id to the requested blocks along with the pointer to the block being made rn
+	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
 	
 	// pass 3, do depth first search on ur blocks to get to the deepest blocks
 	// for each block, do this

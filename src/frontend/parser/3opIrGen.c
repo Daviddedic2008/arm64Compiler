@@ -647,6 +647,24 @@ void constantFoldingPass(){
 	}
 }
 
+lblInd* lblInds; lblInd* lblIndsINT;
+void generateIndexedLabels(){
+	// doubly write to have one array of sorted and one for fast lookup
+	lblInds = (lblInd*)(quadPool.pool + quadPool.used); lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
+	writeElement(&quadPool, NULL, sizeof(lblInd) * numLabels * 2);
+	quad* q = (quad*)(quadPool.pool); for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++, q++){
+		const lblInd tli = (lblInd){q->o1.vReg, qi};
+		if(q->op == SETLABEL){lblInds[q->o1.vReg] = tli; lblIndsINT[q->o1.vReg] = tli;}
+	} 
+	return lblInds;
+}
+uint32_t getLabelQID(const uint32_t lbl){
+	return lblIndsINT[lbl].qId;
+}
+
+lblInd* getLblInds(){return lblInds;}
+uint32_t getNumLbls(){return numLabels;}
+
 #define maxQuads 4096
 
 arena linearizeAST(const node* baseNode){
@@ -657,5 +675,6 @@ arena linearizeAST(const node* baseNode){
 	linearizeNode((linData){baseNode, nullSymbol, 0});
 	//referenceOptimizationPass(); wrong for now
 	constantFoldingPass();
+	generateIndexedLabels();
 	return quadPool;
 }
