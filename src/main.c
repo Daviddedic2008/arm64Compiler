@@ -21,6 +21,7 @@ int main(int argc, char* argv[]){
 		}
 		setJmpBuf(compRetEnv);
 		verifyAlphabeticalOrder();
+		initializeScratchpad(2048);
 		char* src = loadFileToBuffer(argv[1]);
 		tokenArray a = tokenizeSource(src);
 		CopyFileA(argv[1], pathSrc, FALSE);

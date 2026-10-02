@@ -5,6 +5,8 @@
 #include "../../tester/testGen.h"
 #include "../../helper/algos.h"
 
+#define BITVEC_WORDS 8
+
 #define stackStep 2048
 sizedPool vRegStack; uint32_t curStackPos = 0;
 
@@ -46,7 +48,7 @@ bool validType(const symbol s){
 bool sameSymbol(const symbol s1, const symbol s2){return s1.vReg == s2.vReg && s1.type == s2.type;}
 
 void constructRanges(const arena quadArena){
-    const uint32_t nq = quadArena.used / sizeof(quad);
+    const uint32_t nq = getNumQuads();
     const uint32_t vr = getTotalVRegs();
     sizedPool ret = {.data = malloc(sizeof(range) * vr), .size = vr};
     for(uint32_t r = 0; r < vr; r++){
@@ -104,11 +106,19 @@ typedef struct{
 	uint32_t numPBranches, numParents;
 	struct block* pBranches;
 	struct block* parentBlocks;
+	uint64_t liveOut[BITVEC_WORDS];
+	uint64_t liveIn[BITVEC_WORDS];
+	uint64_t defVreg[BITVEC_WORDS];
+	uint64_t useVreg[BITVEC_WORDS];
 }block;
 
+block* activeBlocks; 
 bool isConditionalJump(w64 w){return w.w2 == (0xFFFFFFFF - 1);}
-void cfgEdges(){
-	// DONE
+void cfgEdges(const uint32_t startQ, const uint32_t endQ){
+	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
+	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
+	// FOR CHAITIN BRIGGS, MAKE SURE THE BACKWARDS LIVENESS ANALYSIS DEALS W LOOPS PROPERLY
+
 	// change quadgen to save a separate stack of labels and their related quad indices
 	// will massively speed up pass 2
 	
@@ -116,19 +126,43 @@ void cfgEdges(){
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
 	const arena* quadArena = getQuadArena();
-	sizedPool jumpIds = (sizedPool){.data = quadArena->pool + quadArena->used, .size = 0};
-	const quad* q = (quad*)quadArena->pool; for(uint32_t qi = 0; qi < quadArena->used/sizeof(quad); qi++, q++){
+	sizedPool jumpIds = (sizedPool){.data = getScratchpad()->pool, .size = 0};
+	const quad* q = (quad*)quadArena->pool; for(uint32_t qi = startQ; qi < endQ; qi++, q++){
 		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
 			const w64 w64w = {qi, (0xFFFFFFFF - q->op) == JMPCND}; 
-			quadArena.writeElement(quadArena, &w64w, sizeof(uint64_t));
+			writeElement(getScratchpad(), &w64w, sizeof(uint64_t));
 			jumpIds.size++;
 		}
 	}
 	// sort!!
 	const uint32_t numQids = getNumLbls() + jumpIds.size;
 	insertionSort(getLblInds(), sizeof(lblInd), numQids, NULL);
+	const uint32_t lastQid = numQids ? ((w64*)getLblInds())[numQids-1].w1 : 0;
+	const uint32_t firstQid = numQids ? ((w64*)getLblInds())[0].w1 : 0;
+	// now, go through sorted list to make initial block outlines.
+	const uint32_t expectedNB = numQids ? (numQids + (lastQid != getNumQuads()) - (firstQid == 0)) : 1;
+	block* blocks = writeElement(getScratchpad(), NULL, sizeof(block) * expectedNB);
+	const w64* w64ids = ((w64*)jumpIds.data); uint32_t blocksCnstr = 0;
+	int64_t i1 = 0, i2 = 0; do{
+		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, 0) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : getNumQuads()-1};
+		const quad endQ = ((quad*)(quadArena->pool))[newBlock.q2];
+		const uint32_t npb = 1 + endQ.op == JMPCND;
+		blocks[blocksCnstr++] = newBlock;
+		i2++, i1++;
+	}while(i2 < numQids); if(blocksCnstr != expectedNB){
+		block newBlock = (block){.q1 = lastQid, .q2 = getNumQuads()-1};
+		blocks[blocksCnstr++] = newBlock;
+	}
 	
-	// pass 2, construct jump links. 
+	for(uint32_t bId = 0; bId < blocksCnstr; bId++){
+		const block* b = blocks + bId;
+		switch(((quad*)(quadArena->pool))[b->q2].op){
+			case JMP: break;
+			case JMPABS: break;
+			case RET: break;
+		}
+	}
+	// pass 2 intertwined with previous pass, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
 	// if no absolute jump is found, add next sequential block as potential branch(fallthrough)
@@ -144,12 +178,12 @@ void cfgEdges(){
 	
 	// pass 3, do depth first search on ur blocks to get to the deepest blocks
 	// for each block, do this
-	// maintain live range bitvector LRB, if block has another one that potentially branches to it, start with the stack that previous block sends
+	// maintain live range bitvector LIVE_OUT
+	// at the start, populate it with the sum of the LIVE_IN of its children
 	// vReg being written to is called vReg WRITE
 	// within blocks, go from last quad up to first quad
-	// for each quad, first write an edge between vReg WRITE and all vRegs in LRB
-	// then, remove vReg WRITE from LRB
-	// at end of block, forward the remaining LRB to its parents
+	// for each quad, first write an edge between vReg WRITE and all vRegs in LIVE_OUT
+	// then, remove vReg WRITE from LIVE_OUT
 }
 
 void printEdges(){

@@ -18,3 +18,7 @@ void addEl(sizedPool* p, const void* data, const uint32_t wrSz);
 #define freeArena(a) a.allocated = 0, a.used = 0, free(a.pool)
 #define emptyArena(a) a.used = 0
 #define reallocateArena(a, sz) {const uint32_t s = sz; (s <= a.used) ? (a.pool = realloc(a.pool, s), a.allocated = s, 0) : 1;}
+#define shortenArena(a, sz) (a)->used -= (sz)
+
+arena* getScratchpad();
+void initializeScratchpad(const uint32_t initSz);

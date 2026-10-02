@@ -1,5 +1,9 @@
-EDGE<<R(1, 3) : R(2, 4)>>
-EDGE<<R(2, 4) : R(3, 3)>>
+EDGE<<R(4, 6) : R(5, 7)>>
+EDGE<<R(5, 7) : R(6, 6)>>
+
+DEF helper
+x0 = LOADIMM #5
+RET #0
 
 DEF main
 x0 = LOADIMM #5

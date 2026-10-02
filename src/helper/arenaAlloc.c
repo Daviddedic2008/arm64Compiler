@@ -5,6 +5,16 @@
 
 arena newArena(const uint32_t sz){return (arena){.pool = malloc(sz), .allocated = sz, .used = 0};}
 
+arena scratchpadArena;
+
+void initializeScratchpad(const uint32_t initSz){
+	scratchpadArena = newArena(initSz);
+}
+
+arena* getScratchpad(){
+	return &scratchpadArena;
+}
+
 void* writeElement(arena* a, const void* data, const uint32_t wrSz){
 	if(a->used + wrSz > a->allocated){a->pool = realloc(a->pool, a->allocated * 2);}
 	if(data == NULL) return NULL;

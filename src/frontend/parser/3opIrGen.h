@@ -40,3 +40,5 @@ typedef struct{
 
 lblInd* getLblInds();
 uint32_t getNumLbls();
+
+uint32_t getNumQuads();

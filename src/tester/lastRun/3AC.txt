@@ -1,7 +1,11 @@
 
-DEF main
+DEF helper
 loc_id(0)_INT = LOADIMM #5
-loc_id(1)_INT = LOADIMM #6
-loc_id(2)_INT = MOV loc_id(0)_INT
-loc_id(1)_INT = LOADIMM #7
+RET #0
+
+DEF main
+loc_id(1)_INT = LOADIMM #5
+loc_id(2)_INT = LOADIMM #6
+loc_id(3)_INT = MOV loc_id(1)_INT
+loc_id(2)_INT = LOADIMM #7
 RET #0

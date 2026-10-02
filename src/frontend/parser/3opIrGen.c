@@ -67,20 +67,19 @@ void printQuad(quad q) {
         case ADD: case SUB: case MUL: case DIV: case AND: case OR: case XOR:
             printSymbol(q.o1); printfD(" = "); printSymbol(q.o2); printfD(" %s ", op_names[q.op]); printSymbol(q.o3);
             break;
-        case MOV: case LOADIMM: case LOAD:
+        case MOV: case LOADIMM: case LOAD: case LABEL_MAP:
             printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2);
             break;
         case STORE:
-            printfD("STORE "); printSymbol(q.o2); printfD(" -> ["); printSymbol(q.o1); printfD("]");
+            printfD("STORE "); printSymbol(q.o2); printfD(" -> ["); printSymbol(q.o1); printfD(" + "); printSymbol(q.o3); printfD("]");
             break;
-		case LABEL_MAP: printSymbol(q.o1); printfD(" = %s", op_names[q.op]); break;
         case JMPCND: printfD("IF "); printSymbol(q.o2); printfD(" JMP label_%d", q.o1.vReg); break;
         case CMP: printfD("CMP "); printSymbol(q.o1); printfD(", "); printSymbol(q.o2); break;
 		case SETLABEL: printSymbol(q.o1); printfD(":"); break;
 		case READFLAGS: printSymbol(q.o1); printfD(" = check "); printSymbol(q.o2); break;
         case FNCDEF: printfD("\nDEF "); printSymbol(q.o1); break;
         case ALIGN: printfD(op_names[q.op]); break;
-        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case JMPABS: case STACK: case GLOBAL: case WRITE_LABEL: printfD("%s ", op_names[q.op]); printSymbol(q.o1); break;
+        case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case JMPABS: case STACK: case GLOBAL: case WRITE_LABEL: printfD("%s ", op_names[q.op]); if(q.o1.type != invalidSymbol) printSymbol(q.o1); break;
         case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
         default: printfD("UNKNOWN_OP(%d)", q.op); break;
     }
@@ -407,6 +406,7 @@ symbol linearizeNode(const linData dat){
 				numArgs++; cn = cn->sibling;
 			}
 			linearizeNode((linData){n->lastChild, nullSymbol, 0});
+			if(((quad*)(quadPool.pool))[numQuads-1].op != RET) emitQuad((quad){.op = RET, .o1 = n->firstChild->val.type == keywordVoid ? nullSymbol : (symbol){.type = literalSymbol, .vReg = 0}});
 			curDescriptor = NULL;
 			return nullSymbol;
 		}
@@ -440,8 +440,9 @@ symbol linearizeNode(const linData dat){
 		}
 		case declarationNode:{
 			if(n->firstChild->symbolData->szArr != 0){
+				const uint32_t curStackOff = curDescriptor->stackSize;
 				if(n->firstChild->symbolData->type != global) curDescriptor->stackSize += n->firstChild->symbolData->szArr * ((n->firstChild->symbolData->varType.type != keywordChar) * 4);
-				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = *(n->firstChild->symbolData)});
+				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = *(n->firstChild->symbolData), .o2 = (symbol){.type = literalSymbol, .vReg = curStackOff}});
 			} addVReg(*(n->firstChild->symbolData));
 			return *(n->firstChild->symbolData);
 		}
@@ -510,12 +511,13 @@ symbol linearizeNode(const linData dat){
 					mapLookup = 0;
 					if(mapLookup){
 						symbol mapOffset = newVReg(keywordIntPtr); const uint32_t defaultLabel = numLabels++;
-						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset});
+						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
 						for(uint32_t lbl = 0; lbl <= range; lbl++){ node* cn2 = n->firstChild->sibling; bool foundCase = 0;
 							while(cn2 != NULL){
 								if(cn2->firstChild->val.val == lbl && cn2->val.type != keywordDefault){
 									const uint32_t nr = numLabels++; foundCase = 1;
-									emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = nr}});
+									emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = nr}, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
+									curDescriptor->stackSize += 8;
 								}
 								cn2 = cn2->sibling;
 							} if(!foundCase) emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
@@ -574,7 +576,7 @@ symbol linearizeNode(const linData dat){
 		case statementNode:{
 			switch(n->val.type){
 				case keywordReturn:{
-					symbol r1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+					symbol r1 = n->firstChild != NULL ? linearizeNode((linData){n->firstChild, nullSymbol, 0}) : nullSymbol;
 					r1.preferredReg = 1; 
 					emitQuad((quad){.op = RET, .o1 = r1});
 					break;
@@ -650,18 +652,18 @@ void constantFoldingPass(){
 lblInd* lblInds; lblInd* lblIndsINT;
 void generateIndexedLabels(){
 	// doubly write to have one array of sorted and one for fast lookup
-	lblInds = (lblInd*)(quadPool.pool + quadPool.used); lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
-	writeElement(&quadPool, NULL, sizeof(lblInd) * numLabels * 2);
+	lblInds = (lblInd*)(getScratchpad()->pool); lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
+	writeElement(getScratchpad(), NULL, sizeof(lblInd) * numLabels * 2);
 	quad* q = (quad*)(quadPool.pool); for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++, q++){
 		const lblInd tli = (lblInd){q->o1.vReg, qi};
 		if(q->op == SETLABEL){lblInds[q->o1.vReg] = tli; lblIndsINT[q->o1.vReg] = tli;}
 	} 
-	return lblInds;
 }
 uint32_t getLabelQID(const uint32_t lbl){
 	return lblIndsINT[lbl].qId;
 }
 
+uint32_t getNumQuads(){return numQuads;}
 lblInd* getLblInds(){return lblInds;}
 uint32_t getNumLbls(){return numLabels;}
 
@@ -675,6 +677,7 @@ arena linearizeAST(const node* baseNode){
 	linearizeNode((linData){baseNode, nullSymbol, 0});
 	//referenceOptimizationPass(); wrong for now
 	constantFoldingPass();
+	numQuads = quadPool.used/sizeof(quad);
 	generateIndexedLabels();
 	return quadPool;
 }
