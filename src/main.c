@@ -36,6 +36,7 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[1;32mGenerated 3AC\x1b[0m\n\n");
 		printfCND("\x1b[36m3AC IR\x1b[0m\n\n");
 		switchFile(P3AC);
+		initScratchpad();
 		arena quads = linearizeAST(&b);
 		printQuads();
 		constructRanges(quads);
@@ -54,6 +55,8 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
 		printQuads();
+		cfgPassTest();
+		freeScratchpad();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();
 	} else{
 		fprintf(stderr, "ERRORS ENCOUNTERED IN COMPILATION\n\n");

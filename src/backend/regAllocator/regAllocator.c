@@ -101,11 +101,11 @@ typedef struct{
 	uint64_t w2 : 32;
 }w64;
 
-typedef struct{
-	uint32_t q1, q2;
+typedef struct block{
+	uint32_t q1, q2 , lId;
 	uint32_t numPBranches, numParents;
-	struct block* pBranches;
-	struct block* parentBlocks;
+	struct block** pBranches;
+	struct block** parentBlocks;
 	uint64_t liveOut[BITVEC_WORDS];
 	uint64_t liveIn[BITVEC_WORDS];
 	uint64_t defVreg[BITVEC_WORDS];
@@ -113,7 +113,38 @@ typedef struct{
 }block;
 
 block* activeBlocks; 
+
+block* findJmpBlock(const uint32_t lblId, const uint32_t numBlocks){
+	const uint32_t qId = getLabelQID(lblId);
+	uint32_t bl = 0;
+	for(block* b = activeBlocks; bl < numBlocks; b++, bl++){
+		if(b->q1 == qId) return b;
+	} return NULL;
+}
 bool isConditionalJump(w64 w){return w.w2 == (0xFFFFFFFF - 1);}
+
+void printBlock(const block* b){
+	printf("BLOCK[%d]<%d, %d>", b->lId, b->q1, b->q2);
+	if(b->numPBranches){
+		printf("LINK{");
+		for(uint32_t pbId = 0; pbId < b->numPBranches; pbId++){
+			printf("%d", b->pBranches[pbId]->lId);
+			if(b->numPBranches - pbId - 1){
+				printf(", ");
+			}
+		} printf("}");
+	}
+	printf("\n");
+}
+
+void printBlocks(const uint32_t numBlocks){
+	printf("\nFRAME START\n");
+	for(uint32_t i = 0; i < numBlocks; i++){
+		printBlock(activeBlocks + i);
+	}
+	printf("FRAME END\n");
+}
+
 void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
 	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
@@ -125,43 +156,89 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// to construct blocks run 3 passes
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
-	const arena* quadArena = getQuadArena();
-	sizedPool jumpIds = (sizedPool){.data = getScratchpad()->pool, .size = 0};
-	const quad* q = (quad*)quadArena->pool; for(uint32_t qi = startQ; qi < endQ; qi++, q++){
+	const arena* quadArena = getQuadArena(); uint32_t releaseSize = 0;
+	sizedPool jumpIds = (sizedPool){.data = getLblInds() + sizeof(lblInd) * getNumLbls(), .size = 0};
+	printf("%p %p\n", jumpIds.data, getLblInds());
+	const quad* q = (quad*)quadArena->pool + startQ; for(uint32_t qi = startQ; qi <= endQ; qi++, q++){
 		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
-			const w64 w64w = {qi, (0xFFFFFFFF - q->op) == JMPCND}; 
+			const w64 w64w = {qi, 0xFFFFFFFF}; 
 			writeElement(getScratchpad(), &w64w, sizeof(uint64_t));
 			jumpIds.size++;
 		}
 	}
 	// sort!!
+	for(uint32_t i = 0; i < jumpIds.size; i++){
+		printf("JID:%d: ", ((w64*)(jumpIds.data))[i].w1);
+	} printf("\n");
+	releaseSize += jumpIds.size * sizeof(w64);
 	const uint32_t numQids = getNumLbls() + jumpIds.size;
+	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
 	insertionSort(getLblInds(), sizeof(lblInd), numQids, NULL);
-	const uint32_t lastQid = numQids ? ((w64*)getLblInds())[numQids-1].w1 : 0;
-	const uint32_t firstQid = numQids ? ((w64*)getLblInds())[0].w1 : 0;
+	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
+	const uint32_t lastQid = numQids ? ((w64*)getLblInds())[numQids-1].w1 : startQ;
+	const uint32_t firstQid = numQids ? ((w64*)getLblInds())[0].w1 : startQ;
 	// now, go through sorted list to make initial block outlines.
-	const uint32_t expectedNB = numQids ? (numQids + (lastQid != getNumQuads()) - (firstQid == 0)) : 1;
-	block* blocks = writeElement(getScratchpad(), NULL, sizeof(block) * expectedNB);
+	const uint32_t expectedNB = numQids ? (numQids + (lastQid != endQ) - (firstQid == startQ)) : 1;
+	activeBlocks = writeElement(getScratchpad(), NULL, sizeof(block) * expectedNB);
+	getScratchpad()->used += sizeof(block) * expectedNB;
+	releaseSize += sizeof(block) * expectedNB;
 	const w64* w64ids = ((w64*)jumpIds.data); uint32_t blocksCnstr = 0;
 	int64_t i1 = 0, i2 = 0; do{
-		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, 0) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : getNumQuads()-1};
+		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, startQ) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : endQ-1, .lId = blocksCnstr};
 		const quad endQ = ((quad*)(quadArena->pool))[newBlock.q2];
 		const uint32_t npb = 1 + endQ.op == JMPCND;
-		blocks[blocksCnstr++] = newBlock;
+		activeBlocks[blocksCnstr++] = newBlock;
 		i2++, i1++;
 	}while(i2 < numQids); if(blocksCnstr != expectedNB){
-		block newBlock = (block){.q1 = lastQid, .q2 = getNumQuads()-1};
-		blocks[blocksCnstr++] = newBlock;
+		block newBlock = (block){.q1 = lastQid, .q2 = endQ-1, .lId = blocksCnstr};
+		activeBlocks[blocksCnstr++] = newBlock;
 	}
-	
+	printf("%d\n", expectedNB);
 	for(uint32_t bId = 0; bId < blocksCnstr; bId++){
-		const block* b = blocks + bId;
-		switch(((quad*)(quadArena->pool))[b->q2].op){
-			case JMP: break;
-			case JMPABS: break;
-			case RET: break;
+		block* b = activeBlocks + bId;
+		const quad qJmp = ((quad*)(quadArena->pool))[b->q2];
+		switch(qJmp.op){
+			case JMP:{
+				const block* tempB = findJmpBlock(qJmp.o1.vReg, blocksCnstr);
+				b->numPBranches = 1; b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*));
+				releaseSize += sizeof(block*);
+				break;
+			}
+			case JMPCND:{
+				const block* tempB = findJmpBlock(qJmp.o1.vReg, blocksCnstr);
+				b->numPBranches = 1 + (bId != (blocksCnstr - 1)); b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*) * b->numPBranches);
+				releaseSize += sizeof(block*) * b->numPBranches;
+				if(bId != blocksCnstr - 1) *(b->pBranches + 1) = b+1; // fallthrough
+				break;
+			}
+			case JMPABS:{
+				// SWITCH STATEMENT, ALLOCATE FOR EACH CASE LABEL
+				uint32_t numLbls = 0;
+				const quad* q = (quad*)(quadArena->pool) + b->q2 - 1;
+				while(q->op == WRITE_LABEL){
+					q--; numLbls++;
+				} b->numPBranches = numLbls; b->pBranches = writeElement(getScratchpad(), NULL, sizeof(block*) * numLbls);
+				q = (quad*)(quadArena->pool) + b->q2 - 1;
+				uint32_t pbId = 0; while(q->op == WRITE_LABEL){
+					b->pBranches[pbId] = findJmpBlock((q--)->o1.vReg, blocksCnstr); pbId++;
+				}
+				releaseSize += sizeof(block*) * b->numPBranches;
+				break;
+			}
+			case RET:{
+				b->pBranches = NULL;
+				b->numPBranches = 0;
+				break;
+			}
+			default:{
+				const block* tempB = b+1;
+				b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*)); b->numPBranches = 1;
+				releaseSize += sizeof(block*) * b->numPBranches; break; // fallthrough
+			}
 		}
 	}
+	printBlocks(blocksCnstr);
+	shortenArena(getScratchpad(), releaseSize);
 	// pass 2 intertwined with previous pass, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
@@ -346,5 +423,17 @@ void chaitinPass(){
 		constructRanges(newQuads);
 		constructEdges();
 		chaitinPass();
+	}
+}
+
+void cfgPassTest(){
+	arena* quadArena = getQuadArena(); const uint32_t nq = getNumQuads();
+	int64_t qs = -1, qe = -1; uint32_t qi = 0; for(quad* q = (quad*)(quadArena->pool); qi < nq; qi++, q++){
+		if(q->op == FNCDEF) qs = qi;
+		else if(q->op == RET) qe = qi;
+		if((qs+1) && (qe+1)){
+			cfgEdges(qs, qe);
+			qs = -1; qe = -1;
+		}
 	}
 }

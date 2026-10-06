@@ -1,11 +1,8 @@
 
-DEF helper
-loc_id(0)_INT = LOADIMM #5
-RET #0
-
 DEF main
-loc_id(1)_INT = LOADIMM #5
-loc_id(2)_INT = LOADIMM #6
-loc_id(3)_INT = MOV loc_id(1)_INT
-loc_id(2)_INT = LOADIMM #7
+loc_id(0)_INT = LOADIMM #5
+CMP loc_id(0)_INT, #5
+IF f_LE JMP label_0
+loc_id(0)_INT = LOADIMM #7
+label_0:
 RET #0

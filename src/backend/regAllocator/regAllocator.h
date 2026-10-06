@@ -17,6 +17,8 @@ void printEdges();
 
 void chaitinPass();
 
+void cfgPassTest();
+
 void printQuadsPhysical();
 
 #define numGPRegs 30

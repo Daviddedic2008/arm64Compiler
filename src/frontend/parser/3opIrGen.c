@@ -652,12 +652,12 @@ void constantFoldingPass(){
 lblInd* lblInds; lblInd* lblIndsINT;
 void generateIndexedLabels(){
 	// doubly write to have one array of sorted and one for fast lookup
-	lblInds = (lblInd*)(getScratchpad()->pool); lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
-	writeElement(getScratchpad(), NULL, sizeof(lblInd) * numLabels * 2);
+	lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
+	lblInds = allocateOnScratchpad(sizeof(lblInd) * numLabels * 2);
 	quad* q = (quad*)(quadPool.pool); for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++, q++){
-		const lblInd tli = (lblInd){q->o1.vReg, qi};
+		const lblInd tli = (lblInd){qi, q->o1.vReg};
 		if(q->op == SETLABEL){lblInds[q->o1.vReg] = tli; lblIndsINT[q->o1.vReg] = tli;}
-	} 
+	}
 }
 uint32_t getLabelQID(const uint32_t lbl){
 	return lblIndsINT[lbl].qId;
