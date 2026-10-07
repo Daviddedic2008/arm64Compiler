@@ -157,23 +157,26 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
 	const arena* quadArena = getQuadArena(); uint32_t releaseSize = 0;
-	sizedPool jumpIds = (sizedPool){.data = getLblInds() + sizeof(lblInd) * getNumLbls(), .size = 0};
-	printf("%p %p\n", jumpIds.data, getLblInds());
-	const quad* q = (quad*)quadArena->pool + startQ; for(uint32_t qi = startQ; qi <= endQ; qi++, q++){
+	sizedPool jumpIds = (sizedPool){.data = resizeChunk(getLastChunk(), getLastChunk()->used + getCFGBreaks() * sizeof(uint64_t)), .size = 0};
+	const quad* q = (quad*)quadArena->pool + startQ; uint32_t nqb = 0; for(uint32_t qi = startQ; qi <= endQ; qi++, q++){
 		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
-			const w64 w64w = {qi, 0xFFFFFFFF}; 
-			writeElement(getScratchpad(), &w64w, sizeof(uint64_t));
-			jumpIds.size++;
+			((w64*)(jumpIds.data))[nqb] = (w64){qi, 0xFFFFFFFF};
+			jumpIds.size++; nqb++;
 		}
 	}
+	
+	for(uint32_t i = 0; i < jumpIds.size + getNumLbls(); i++){
+		printf("%d\n", ((w64*)(getLblInds()))[i].w1);
+	}
 	// sort!!
+	// REDO SORT
+	/*
 	for(uint32_t i = 0; i < jumpIds.size; i++){
 		printf("JID:%d: ", ((w64*)(jumpIds.data))[i].w1);
 	} printf("\n");
-	releaseSize += jumpIds.size * sizeof(w64);
 	const uint32_t numQids = getNumLbls() + jumpIds.size;
 	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
-	insertionSort(getLblInds(), sizeof(lblInd), numQids, NULL);
+	insertionSort(, sizeof(lblInd), numQids, NULL);
 	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
 	const uint32_t lastQid = numQids ? ((w64*)getLblInds())[numQids-1].w1 : startQ;
 	const uint32_t firstQid = numQids ? ((w64*)getLblInds())[0].w1 : startQ;
@@ -239,6 +242,7 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	}
 	printBlocks(blocksCnstr);
 	shortenArena(getScratchpad(), releaseSize);
+	*/
 	// pass 2 intertwined with previous pass, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH

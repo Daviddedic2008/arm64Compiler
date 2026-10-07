@@ -36,7 +36,7 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[1;32mGenerated 3AC\x1b[0m\n\n");
 		printfCND("\x1b[36m3AC IR\x1b[0m\n\n");
 		switchFile(P3AC);
-		initScratchpad();
+		initializeScratchpad(1024);
 		arena quads = linearizeAST(&b);
 		printQuads();
 		constructRanges(quads);

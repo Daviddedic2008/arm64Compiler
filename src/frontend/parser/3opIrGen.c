@@ -649,14 +649,15 @@ void constantFoldingPass(){
 	}
 }
 
-lblInd* lblInds; lblInd* lblIndsINT;
+lblInd* lblInds; lblInd* lblIndsINT; uint32_t numCFGBreaks;
 void generateIndexedLabels(){
 	// doubly write to have one array of sorted and one for fast lookup
-	lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels;
-	lblInds = allocateOnScratchpad(sizeof(lblInd) * numLabels * 2);
+	lblInds = (lblInd*)allocateOnScratchpad(sizeof(lblInd) * numLabels * 2);
+	lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels; numCFGBreaks = 0;
 	quad* q = (quad*)(quadPool.pool); for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++, q++){
 		const lblInd tli = (lblInd){qi, q->o1.vReg};
 		if(q->op == SETLABEL){lblInds[q->o1.vReg] = tli; lblIndsINT[q->o1.vReg] = tli;}
+		if(q->op == JMPCND || q->op == JMPCND || q->op == JMPABS || q->op == JMP) numCFGBreaks++; 
 	}
 }
 uint32_t getLabelQID(const uint32_t lbl){
@@ -666,6 +667,7 @@ uint32_t getLabelQID(const uint32_t lbl){
 uint32_t getNumQuads(){return numQuads;}
 lblInd* getLblInds(){return lblInds;}
 uint32_t getNumLbls(){return numLabels;}
+uint32_t getCFGBreaks(){return numCFGBreaks;}
 
 #define maxQuads 4096
 

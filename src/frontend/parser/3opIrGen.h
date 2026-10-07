@@ -41,5 +41,6 @@ typedef struct{
 lblInd* getLblInds();
 uint32_t getNumLbls();
 uint32_t getLabelQID(const uint32_t lbl);
+uint32_t getCFGBreaks();
 
 uint32_t getNumQuads();

@@ -1,0 +1,8 @@
+
+DEF main
+x0 = LOADIMM #5
+CMP x0, #5
+IF f_LE JMP label_0
+x0 = LOADIMM #7
+label_0:
+RET #0

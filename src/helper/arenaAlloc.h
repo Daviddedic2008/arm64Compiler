@@ -20,10 +20,10 @@ void addEl(sizedPool* p, const void* data, const uint32_t wrSz);
 #define reallocateArena(a, sz) {const uint32_t s = sz; (s <= a.used) ? (a.pool = realloc(a.pool, s), a.allocated = s, 0) : 1;}
 #define shortenArena(a, sz) (a)->used -= (sz)
 
-typedef struct{
+typedef struct memC{
 	uint32_t allocated, used;
 	uint32_t offsetS, offsetE;
-	memC* nextC; memC* prevC;
+	struct memC* nextC; struct memC* prevC;
 	uint8_t data[];
 }memC;
 
@@ -33,6 +33,9 @@ typedef struct{
 }scratchpad;
 
 void initializeScratchpad(const uint32_t initSz);
+void freeScratchpad();
 uint8_t* allocateOnScratchpad(const uint32_t allocSz);
 uint8_t* writeToScratchpad(const uint8_t* data, const uint32_t wrSz);
 uint8_t* getScratchEl(const uint32_t offset);
+uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw);
+memC* getLastChunk();

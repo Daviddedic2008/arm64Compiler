@@ -5,16 +5,6 @@
 
 arena newArena(const uint32_t sz){return (arena){.pool = malloc(sz), .allocated = sz, .used = 0};}
 
-arena scratchpadArena;
-
-void initializeScratchpad(const uint32_t initSz){
-	scratchpadArena = newArena(initSz);
-}
-
-arena* getScratchpad(){
-	return &scratchpadArena;
-}
-
 void* writeElement(arena* a, const void* data, const uint32_t wrSz){
 	if(a->used + wrSz > a->allocated){a->pool = realloc(a->pool, a->allocated * 2);}
 	if(data == NULL) return a->pool + a->used;
@@ -83,42 +73,39 @@ static inline void raw_chunk_free(void* ptr) {
 }
 #endif
 
-memC* getLastChunk(scratchpad s){
-	const memC* curC = s.startC;
-	while(curC){
-		curC = curC->nextC;
-	}
-}
-
 scratchpad globalScratch;
 
 #define minChunkSz 1024
 
+memC* getLastChunk(){
+	return globalScratch.endC;
+}
+
 memC* newChunk(const uint32_t initSz){
 	const uint32_t is = initSz > minChunkSz ? initSz : minChunkSz;
-	const memC* m = raw_chunk_alloc(sizeof(memC) + is);
+	memC* m = raw_chunk_alloc(sizeof(memC) + is);
 	m->allocated = is; m->used = 0;
 	m->nextC = NULL; m->prevC = NULL;
 	m->offsetS = globalScratch.allocatedMem; m->offsetE = m->offsetS + initSz;
 	globalScratch.allocatedMem += initSz;
 	if(globalScratch.numC){
-		m->prevC = globalScratch->endC;
-		globalScratch->endC->nextC = m;
+		m->prevC = globalScratch.endC;
+		globalScratch.endC->nextC = m;
 	} else{
-		globalScratch->startC = m;
-	} globalScratch->endC = m;
+		globalScratch.startC = m;
+	} globalScratch.endC = m;
 	globalScratch.numC++;
 	return m;
 }
 
 void initializeScratchpad(const uint32_t initSz){
 	const uint32_t is = initSz > minChunkSz ? initSz : minChunkSz;
-	globalScratch = (scratchpad(){0};
+	globalScratch = (scratchpad){0};
 	newChunk(initSz);
 }
 
 void freeScratchpad(){
-	const void* mcp = globalScratch.startC;
+	const memC* mcp = globalScratch.startC;
 	while(mcp){
 		const void* mcpN = mcp->nextC;
 		raw_chunk_free(mcp);
@@ -133,16 +120,15 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 		ret = lc->data; lc->used += allocSz; 
 	} else{
 		ret = raw_chunk_realloc_in_place(lc, sizeof(memC) + lc->used + allocSz);
-		lc->offsetE += allocSz;
 		if(!ret){
-			const memC* nc = newChunk(allocSz);
-			ret = nc->data;
-		}
+			memC* nc = newChunk(allocSz);
+			ret = nc->data; nc->used = allocSz;
+		} else{lc->offsetE += allocSz; lc->used += allocSz;}
 	} return ret;
 }
 
 uint8_t* writeToScratchpad(const uint8_t* data, const uint32_t wrSz){
-	const uint8_t* allM = allocateOnScratchpad(wrSz);
+	uint8_t* allM = allocateOnScratchpad(wrSz);
 	switch(wrSz){
 		case 1: *allM = *data; break;
 		case 2: *((uint16_t*)allM) = *((uint16_t*)data); break;
@@ -163,12 +149,13 @@ uint8_t* getScratchEl(const uint32_t offset){
 
 uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw){
 	const uint32_t allocSz = allocSzRaw < minChunkSz ? minChunkSz : allocSzRaw;
-	if((c->used + allocSz) < c->allocated){c->used += allocSz; return c->data;}
+	uint8_t* retPtr = NULL;
+	if((c->used + allocSz) < c->allocated){retPtr = c->data + c->used; c->used += allocSz; return retPtr;}
 	memC* newM = raw_chunk_realloc(c, allocSz);
 	if(!newM){
 		newM = raw_chunk_alloc(allocSz + sizeof(memC));
-		*newM = *c;
+		memcpy(newM, c, sizeof(allocSz + sizeof(memC)));
 		raw_chunk_free(c);
-		c = newM;
-	} return c->data;
+	} retPtr = newM->data + newM->used; newM->used += allocSz;
+	return retPtr;
 }
