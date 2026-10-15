@@ -101,15 +101,38 @@ typedef struct{
 	uint64_t w2 : 32;
 }w64;
 
+typedef struct{
+	uint64_t arr[BITVEC_WORDS];
+}bva;
+
+#define SET_BIT_BVA(bvar, bit) (bvar).arr[(bit)/64] |= (1 << ((bit) % 64)), (bvar)
+
+bva UBVA(bva bva1, const bva bva2){
+	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) bva1.arr[u64] |= bva2.arr[u64];
+	return bva1;
+}
+
+bva ABVA(bva bva1, const bva bva2){
+	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) bva1.arr[u64] &= bva2.arr[u64];
+	return bva1;
+}
+
+bva NBVA(bva bva1, const bva bva2){
+	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) bva1.arr[u64] &= ~bva2.arr[u64];
+	return bva1;
+}
+
+bva SBBVA(const uint32_t bit){
+	bva ret = {0}; return SET_BIT_BVA(ret, bit);
+}
+
 typedef struct block{
 	uint32_t q1, q2 , lId;
 	uint32_t numPBranches, numParents;
 	struct block** pBranches;
 	struct block** parentBlocks;
-	uint64_t liveOut[BITVEC_WORDS];
-	uint64_t liveIn[BITVEC_WORDS];
-	uint64_t defVreg[BITVEC_WORDS];
-	uint64_t useVreg[BITVEC_WORDS];
+	bva liveOut, liveIn;
+	bva def, use;
 }block;
 
 block* activeBlocks; 
@@ -124,26 +147,100 @@ block* findJmpBlock(const uint32_t lblId, const uint32_t numBlocks){
 bool isConditionalJump(w64 w){return w.w2 == (0xFFFFFFFF - 1);}
 
 void printBlock(const block* b){
-	printf("BLOCK[%d]<%d, %d>", b->lId, b->q1, b->q2);
+	printfD("BLOCK[%d]<%d, %d>", b->lId, b->q1, b->q2);
 	if(b->numPBranches){
-		printf("LINK{");
+		printfD("LINK{");
 		for(uint32_t pbId = 0; pbId < b->numPBranches; pbId++){
-			printf("%d", b->pBranches[pbId]->lId);
+			printfD("%d", b->pBranches[pbId]->lId);
 			if(b->numPBranches - pbId - 1){
-				printf(", ");
+				printfD(", ");
 			}
-		} printf("}");
+		} printfD("}");
 	}
-	printf("\n");
+	printfD("\n");
 }
 
 void printBlocks(const uint32_t numBlocks){
-	printf("\nFRAME START\n");
 	for(uint32_t i = 0; i < numBlocks; i++){
 		printBlock(activeBlocks + i);
 	}
-	printf("FRAME END\n");
 }
+
+bva findReads(const quad q){
+	bva ret = {0};
+	if(validType(q.o2)) SET_BIT_BVA(ret, q.o2.vReg);
+	if(validType(q.o3)) SET_BIT_BVA(ret, q.o3.vReg);
+	return ret;
+}
+
+bool isWriteQuad(uint32_t op){
+	return op < STORE;
+}
+
+#define edgeListStep = 512
+uint64_t* interfMatr;
+memC* edgeList;
+
+void constructEdgeStorage(){
+	interfMatr = NULL, edgeList = NULL;
+	const uint32_t nvr = getTotalVRegs(); if(nvr < 65){
+		interfMatr = allocateOnScratchpad(sizeof(uint64_t) * nvr);
+	} else edgeList = newChunk(sizeof(uint64_t) * edgeListStep);
+}
+
+void newEdge(const uint32_t i1, const uint32_t i2){
+	// write new edge between these 2 vregs
+	// if number of vregs is less than or equal to 64 you can just use a bit matrix
+	// if its greater than 64 use liveness linked list
+	if(interfMatr){
+		interfMatr[i1] |= (1 << i2); interfMatr[i2] |= (1 << i1);
+	} else{
+		*(w64*)(reallocChunk(edgeList, edgeList->used + sizeof(uint64_t))) = (w64){.w1 = i1, .w2 = i2};
+	}
+}
+
+bool checkEdge(const uint32_t i1, const uint32_t i2){
+	if(interfMatr){
+		return (interfMatr[i1] | (1 << i2)) != 0;
+	} else{
+		w64* w = edgeList->data; for(uint32_t i = 0; i < edgeList->used / sizeof(w64); i++, w++){
+			if((i1 == w->w1 && i2 == w->w2) || (i1 == w->w2 && i2 == w->w1)) return 1;
+		}
+	} return 0;
+}
+
+bva applyReads(bva lr, const bva reads){
+	for(uint8_t arri = 0; arri < BITVEC_WORDS; arri++){
+		if(reads.arr[arri]){uint8_t off = 0; 
+			for(uint64_t bi = 1; bi != (1<<64); bi << 1, off++){
+				if(bi & reads.arr[arri]) for(uint8_t arri2 = 0; arri2 < BITVEC_WORDS; arri2++)
+				if(lr.arr[arri2]{
+					uint8_t off2 = 0; for(uint64_t bi2 = 1; bi2 != (1<<64); bi2 << 1, off++)
+					if(bi2 & lr.arr[arri2]) newEdge(off, off2);
+				}
+			}
+		}
+	}
+}
+
+void compUseDef(block* b){
+	b->use = {0}; b->def = {0};
+	const quad* q = (quad*)(getQuadArena().pool) + b->q1; for(const uint32_t qo = b->q1; qo < b->q2; qo++, q++){
+		bva reads = findReads(*q);
+		bva write = {0}; if(isWriteQuad(q->op) && validType(q->o1)) write = UBVA(write, SBBVA(q->o1.vReg));
+		b->use = UBVA(b->use, NBVA(reads, b->def)); b->def = UBVA(b->def, write);
+	}
+}
+
+
+
+// to compute live ins and outs do this:
+// have to do multiple passes until live_in and live_out stop changing for all blocks
+// compute live_in first, it should be:   use | (live_out NBVA def)
+// compute live_out second, it should be SUM(live_in of potential branch nodes)
+
+// fuckass post order reversed list to start
+
 
 void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
@@ -164,28 +261,14 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 			jumpIds.size++; nqb++;
 		}
 	}
-	
-	for(uint32_t i = 0; i < jumpIds.size + getNumLbls(); i++){
-		printf("%d\n", ((w64*)(getLblInds()))[i].w1);
-	}
-	// sort!!
-	// REDO SORT
-	/*
-	for(uint32_t i = 0; i < jumpIds.size; i++){
-		printf("JID:%d: ", ((w64*)(jumpIds.data))[i].w1);
-	} printf("\n");
-	const uint32_t numQids = getNumLbls() + jumpIds.size;
-	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
-	insertionSort(, sizeof(lblInd), numQids, NULL);
-	for(uint32_t i = 0; i < numQids; i++) printf("%d ", (getLblInds() + i)->qId); printf("\n");
+	const uint32_t numQids = getNumLbls() + nqb;
+	insertionSort(getLblInds(), sizeof(lblInd), numQids, NULL);
 	const uint32_t lastQid = numQids ? ((w64*)getLblInds())[numQids-1].w1 : startQ;
 	const uint32_t firstQid = numQids ? ((w64*)getLblInds())[0].w1 : startQ;
 	// now, go through sorted list to make initial block outlines.
 	const uint32_t expectedNB = numQids ? (numQids + (lastQid != endQ) - (firstQid == startQ)) : 1;
-	activeBlocks = writeElement(getScratchpad(), NULL, sizeof(block) * expectedNB);
-	getScratchpad()->used += sizeof(block) * expectedNB;
-	releaseSize += sizeof(block) * expectedNB;
-	const w64* w64ids = ((w64*)jumpIds.data); uint32_t blocksCnstr = 0;
+	activeBlocks = (block*)allocateOnScratchpad(sizeof(block) * expectedNB);
+	const w64* w64ids = ((w64*)getLblInds()); uint32_t blocksCnstr = 0;
 	int64_t i1 = 0, i2 = 0; do{
 		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, startQ) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : endQ-1, .lId = blocksCnstr};
 		const quad endQ = ((quad*)(quadArena->pool))[newBlock.q2];
@@ -196,22 +279,21 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 		block newBlock = (block){.q1 = lastQid, .q2 = endQ-1, .lId = blocksCnstr};
 		activeBlocks[blocksCnstr++] = newBlock;
 	}
-	printf("%d\n", expectedNB);
 	for(uint32_t bId = 0; bId < blocksCnstr; bId++){
 		block* b = activeBlocks + bId;
 		const quad qJmp = ((quad*)(quadArena->pool))[b->q2];
 		switch(qJmp.op){
 			case JMP:{
 				const block* tempB = findJmpBlock(qJmp.o1.vReg, blocksCnstr);
-				b->numPBranches = 1; b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*));
-				releaseSize += sizeof(block*);
+				b->numPBranches = 1; b->pBranches = (block**)writeToScratchpad(&tempB, sizeof(block*)); 
 				break;
 			}
 			case JMPCND:{
 				const block* tempB = findJmpBlock(qJmp.o1.vReg, blocksCnstr);
-				b->numPBranches = 1 + (bId != (blocksCnstr - 1)); b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*) * b->numPBranches);
-				releaseSize += sizeof(block*) * b->numPBranches;
-				if(bId != blocksCnstr - 1) *(b->pBranches + 1) = b+1; // fallthrough
+				b->numPBranches = 1 + (bId != (blocksCnstr - 1));
+				b->pBranches = (block**)allocateOnScratchpad(sizeof(block*) * b->numPBranches);
+				*(b->pBranches) = tempB; if(bId != blocksCnstr - 1) *(b->pBranches + 1) = b+1;
+				// fallthrough
 				break;
 			}
 			case JMPABS:{
@@ -220,12 +302,11 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 				const quad* q = (quad*)(quadArena->pool) + b->q2 - 1;
 				while(q->op == WRITE_LABEL){
 					q--; numLbls++;
-				} b->numPBranches = numLbls; b->pBranches = writeElement(getScratchpad(), NULL, sizeof(block*) * numLbls);
+				} b->numPBranches = numLbls; b->pBranches = (block**)allocateOnScratchpad(sizeof(block*) * numLbls);
 				q = (quad*)(quadArena->pool) + b->q2 - 1;
 				uint32_t pbId = 0; while(q->op == WRITE_LABEL){
 					b->pBranches[pbId] = findJmpBlock((q--)->o1.vReg, blocksCnstr); pbId++;
 				}
-				releaseSize += sizeof(block*) * b->numPBranches;
 				break;
 			}
 			case RET:{
@@ -234,15 +315,18 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 				break;
 			}
 			default:{
-				const block* tempB = b+1;
-				b->pBranches = writeElement(getScratchpad(), &tempB, sizeof(block*)); b->numPBranches = 1;
-				releaseSize += sizeof(block*) * b->numPBranches; break; // fallthrough
+				const block* tempB = b + 1;
+				b->pBranches = (block**)allocateOnScratchpad(sizeof(block*)); b->numPBranches = 1;
+				*(b->pBranches) = tempB; // fallthrough
+				break; // fallthrough
 			}
 		}
 	}
+	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printf("]\n");
 	printBlocks(blocksCnstr);
-	shortenArena(getScratchpad(), releaseSize);
-	*/
+	printfD("FRAME END\n");
+	
+
 	// pass 2 intertwined with previous pass, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
@@ -257,14 +341,8 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// check if quad ID is in any blocks that were already made. if so, just add that as your child. if not, push ur quad id to the requested blocks along with the pointer to the block being made rn
 	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
 	
-	// pass 3, do depth first search on ur blocks to get to the deepest blocks
-	// for each block, do this
-	// maintain live range bitvector LIVE_OUT
-	// at the start, populate it with the sum of the LIVE_IN of its children
-	// vReg being written to is called vReg WRITE
-	// within blocks, go from last quad up to first quad
-	// for each quad, first write an edge between vReg WRITE and all vRegs in LIVE_OUT
-	// then, remove vReg WRITE from LIVE_OUT
+	// EDGE CONSTRUCTION:
+	// 
 }
 
 void printEdges(){

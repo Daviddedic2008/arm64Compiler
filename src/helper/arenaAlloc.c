@@ -75,7 +75,7 @@ static inline void raw_chunk_free(void* ptr) {
 
 scratchpad globalScratch;
 
-#define minChunkSz 1024
+#define minChunkSz 2048
 
 memC* getLastChunk(){
 	return globalScratch.endC;
@@ -117,9 +117,9 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 	memC* lc = globalScratch.endC;
 	uint8_t* ret = NULL;
 	if((lc->used + allocSz) < lc->allocated){
-		ret = lc->data; lc->used += allocSz; 
+		ret = lc->data + lc->used; lc->used += allocSz;
 	} else{
-		ret = raw_chunk_realloc_in_place(lc, sizeof(memC) + lc->used + allocSz);
+		ret = ((memC*)raw_chunk_realloc_in_place(lc, sizeof(memC) + lc->used + allocSz))->data;
 		if(!ret){
 			memC* nc = newChunk(allocSz);
 			ret = nc->data; nc->used = allocSz;
@@ -127,7 +127,25 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 	} return ret;
 }
 
-uint8_t* writeToScratchpad(const uint8_t* data, const uint32_t wrSz){
+uint8_t* reallocChunk(memC* c, uint32_t reallocSz){
+	if(reallocSz % minChunkSz) reallocSz = (reallocSz / minChunkSz) * minChunkSz + minChunkSz;
+	uint8_t* ret = NULL;
+	if(c->used + reallocSz < c->allocated){
+		ret = c->data + c->used; c->used += reallocSz;
+	} else{
+		ret = ((memC*)raw_chunk_realloc_in_place(c, sizeof(memC) + c->used + reallocSz))->data;
+		if(!ret){
+			memC* nc = newChunk(allocSz);
+			memcpy(nc, c, sizeof(memC) + nc->used);
+			raw_chunk_free(c); ret = nc->data;
+			if(globalScratch.startC == c) globalScratch.startC = nc;
+			if(globalScratch.endC == c) globalScratch.endC = nc;
+		}
+	} return ret;
+}
+
+uint8_t* writeToScratchpad(const void* data1, const uint32_t wrSz){
+	uint8_t* data = (uint8_t*)data1;
 	uint8_t* allM = allocateOnScratchpad(wrSz);
 	switch(wrSz){
 		case 1: *allM = *data; break;
@@ -142,7 +160,7 @@ uint8_t* writeToScratchpad(const uint8_t* data, const uint32_t wrSz){
 uint8_t* getScratchEl(const uint32_t offset){
 	const memC* mcp = globalScratch.startC;
 	while(mcp){
-		if(mcp->offsetS <= offset && mcp->offsetE < offset) return mcp->data + (offset - mcp->offsetS);
+		if(mcp->offsetS <= offset && mcp->offsetE <= offset) return mcp->data + (offset - mcp->offsetS);
 		mcp = mcp->nextC;
 	} return NULL;
 }
@@ -151,10 +169,10 @@ uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw){
 	const uint32_t allocSz = allocSzRaw < minChunkSz ? minChunkSz : allocSzRaw;
 	uint8_t* retPtr = NULL;
 	if((c->used + allocSz) < c->allocated){retPtr = c->data + c->used; c->used += allocSz; return retPtr;}
-	memC* newM = raw_chunk_realloc(c, allocSz);
+	memC* newM = raw_chunk_realloc(c, allocSz + sizeof(memC));
 	if(!newM){
 		newM = raw_chunk_alloc(allocSz + sizeof(memC));
-		memcpy(newM, c, sizeof(allocSz + sizeof(memC)));
+		memcpy(newM, c, allocSz + sizeof(memC));
 		raw_chunk_free(c);
 	} retPtr = newM->data + newM->used; newM->used += allocSz;
 	return retPtr;

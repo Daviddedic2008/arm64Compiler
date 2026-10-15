@@ -653,7 +653,7 @@ lblInd* lblInds; lblInd* lblIndsINT; uint32_t numCFGBreaks;
 void generateIndexedLabels(){
 	// doubly write to have one array of sorted and one for fast lookup
 	lblInds = (lblInd*)allocateOnScratchpad(sizeof(lblInd) * numLabels * 2);
-	lblIndsINT = lblInds; lblInds += sizeof(lblInd) * numLabels; numCFGBreaks = 0;
+	lblIndsINT = lblInds; lblInds += numLabels; numCFGBreaks = 0;
 	quad* q = (quad*)(quadPool.pool); for(uint32_t qi = 0; qi < quadPool.used/sizeof(quad); qi++, q++){
 		const lblInd tli = (lblInd){qi, q->o1.vReg};
 		if(q->op == SETLABEL){lblInds[q->o1.vReg] = tli; lblIndsINT[q->o1.vReg] = tli;}
