@@ -6,3 +6,14 @@ IF f_LE JMP label_0
 loc_id(0)_INT = LOADIMM #7
 label_0:
 RET #0
+
+FRAME [mainBLOCK[0]<0, 3>LINK{2, 1}
+LIVE IN: {}
+LIVE OUT: {}
+BLOCK[1]<3, 5>LINK{2}
+LIVE IN: {}
+LIVE OUT: {}
+BLOCK[2]<5, 6>
+LIVE IN: {}
+LIVE OUT: {}
+FRAME END

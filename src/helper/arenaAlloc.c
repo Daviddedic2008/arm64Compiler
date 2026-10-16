@@ -116,14 +116,14 @@ void freeScratchpad(){
 uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 	memC* lc = globalScratch.endC;
 	uint8_t* ret = NULL;
-	if((lc->used + allocSz) < lc->allocated){
+	if((lc->used + allocSz) <= lc->allocated){
 		ret = lc->data + lc->used; lc->used += allocSz;
 	} else{
-		ret = ((memC*)raw_chunk_realloc_in_place(lc, sizeof(memC) + lc->used + allocSz))->data;
+		ret = raw_chunk_realloc_in_place(lc, sizeof(memC) + lc->used + allocSz);
 		if(!ret){
 			memC* nc = newChunk(allocSz);
 			ret = nc->data; nc->used = allocSz;
-		} else{lc->offsetE += allocSz; lc->used += allocSz;}
+		} else{lc->offsetE += allocSz; lc->used += allocSz; ret = ((memC*)ret)->data;}
 	} return ret;
 }
 
@@ -133,14 +133,15 @@ uint8_t* reallocChunk(memC* c, uint32_t reallocSz){
 	if(c->used + reallocSz < c->allocated){
 		ret = c->data + c->used; c->used += reallocSz;
 	} else{
-		ret = ((memC*)raw_chunk_realloc_in_place(c, sizeof(memC) + c->used + reallocSz))->data;
+		ret = raw_chunk_realloc_in_place(c, sizeof(memC) + c->used + reallocSz);
 		if(!ret){
-			memC* nc = newChunk(allocSz);
+			memC* nc = newChunk(reallocSz);
 			memcpy(nc, c, sizeof(memC) + nc->used);
+			memC* cc = globalScratch.startC; memC* prevC = NULL;
+			while(cc != c) cc = c->nextC, prevC = c;
+			if(prevC) prevC->nextC = nc;
 			raw_chunk_free(c); ret = nc->data;
-			if(globalScratch.startC == c) globalScratch.startC = nc;
-			if(globalScratch.endC == c) globalScratch.endC = nc;
-		}
+		} else{c->offsetE += reallocSz; c->used += reallocSz; ret = ((memC*)ret)->data;}
 	} return ret;
 }
 

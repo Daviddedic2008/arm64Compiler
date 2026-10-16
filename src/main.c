@@ -41,6 +41,7 @@ int main(int argc, char* argv[]){
 		printQuads();
 		constructRanges(quads);
 		printfCND("\n\n");
+		/*
 		printfCND("\x1b[1;32mFound Live Ranges\x1b[0m\n\n");
 		printfCND("\x1b[36mRanges\x1b[0m\n\n");
 		switchFile(PRANGE);
@@ -55,7 +56,9 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
 		printQuads();
+		*/
 		cfgPassTest();
+		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
 		freeScratchpad();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();
 	} else{

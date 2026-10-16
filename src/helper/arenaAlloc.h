@@ -37,7 +37,7 @@ void freeScratchpad();
 uint8_t* allocateOnScratchpad(const uint32_t allocSz);
 memC* newChunk(const uint32_t chunkSz);
 uint8_t* reallocChunk(memC* c, const uint32_t reallocSz);
+uint8_t* resizeChunk(memC* c, const uint32_t reallocSz);
 uint8_t* writeToScratchpad(const void* data, const uint32_t wrSz);
 uint8_t* getScratchEl(const uint32_t offset);
-uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw);
 memC* getLastChunk();

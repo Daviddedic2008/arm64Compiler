@@ -123,14 +123,27 @@ bva NBVA(bva bva1, const bva bva2){
 }
 
 bva SBBVA(const uint32_t bit){
-	bva ret = {0}; return SET_BIT_BVA(ret, bit);
+	bva ret = (bva){0}; return SET_BIT_BVA(ret, bit);
+}
+
+bool EQBVA(const bva bva1, const bva bva2){
+	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) if(bva1.arr[u64] != bva2.arr[u64]) return 0;
+	return 1;
+}
+
+void printBVA(const bva b){
+	bool firstF = 1; printfD("{");
+	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++){
+		uint16_t off = 0; for(uint64_t mask = 1; mask != 1 << 63; mask <<= 1, off++) if(b.arr[u64] & mask) 
+		{if(!firstF) printfD(", "); firstF = 0; printfD("%d\n", off);}
+	}
+	printfD("}\n");
 }
 
 typedef struct block{
-	uint32_t q1, q2 , lId;
-	uint32_t numPBranches, numParents;
+	uint32_t q1, q2, lId, visitNum;
+	uint32_t numPBranches;
 	struct block** pBranches;
-	struct block** parentBlocks;
 	bva liveOut, liveIn;
 	bva def, use;
 }block;
@@ -158,6 +171,8 @@ void printBlock(const block* b){
 		} printfD("}");
 	}
 	printfD("\n");
+	printfD("LIVE IN: "); printBVA(b->liveIn);
+	printfD("LIVE OUT: "); printBVA(b->liveOut);
 }
 
 void printBlocks(const uint32_t numBlocks){
@@ -167,7 +182,7 @@ void printBlocks(const uint32_t numBlocks){
 }
 
 bva findReads(const quad q){
-	bva ret = {0};
+	bva ret = (bva){0};
 	if(validType(q.o2)) SET_BIT_BVA(ret, q.o2.vReg);
 	if(validType(q.o3)) SET_BIT_BVA(ret, q.o3.vReg);
 	return ret;
@@ -177,14 +192,14 @@ bool isWriteQuad(uint32_t op){
 	return op < STORE;
 }
 
-#define edgeListStep = 512
+#define edgeListStep 512
 uint64_t* interfMatr;
 memC* edgeList;
 
 void constructEdgeStorage(){
 	interfMatr = NULL, edgeList = NULL;
 	const uint32_t nvr = getTotalVRegs(); if(nvr < 65){
-		interfMatr = allocateOnScratchpad(sizeof(uint64_t) * nvr);
+		interfMatr = (uint64_t*)allocateOnScratchpad(sizeof(uint64_t) * nvr);
 	} else edgeList = newChunk(sizeof(uint64_t) * edgeListStep);
 }
 
@@ -203,7 +218,7 @@ bool checkEdge(const uint32_t i1, const uint32_t i2){
 	if(interfMatr){
 		return (interfMatr[i1] | (1 << i2)) != 0;
 	} else{
-		w64* w = edgeList->data; for(uint32_t i = 0; i < edgeList->used / sizeof(w64); i++, w++){
+		w64* w = (w64*)edgeList->data; for(uint32_t i = 0; i < edgeList->used / sizeof(w64); i++, w++){
 			if((i1 == w->w1 && i2 == w->w2) || (i1 == w->w2 && i2 == w->w1)) return 1;
 		}
 	} return 0;
@@ -214,7 +229,7 @@ bva applyReads(bva lr, const bva reads){
 		if(reads.arr[arri]){uint8_t off = 0; 
 			for(uint64_t bi = 1; bi != (1<<64); bi << 1, off++){
 				if(bi & reads.arr[arri]) for(uint8_t arri2 = 0; arri2 < BITVEC_WORDS; arri2++)
-				if(lr.arr[arri2]{
+				if(lr.arr[arri2]){
 					uint8_t off2 = 0; for(uint64_t bi2 = 1; bi2 != (1<<64); bi2 << 1, off++)
 					if(bi2 & lr.arr[arri2]) newEdge(off, off2);
 				}
@@ -224,23 +239,23 @@ bva applyReads(bva lr, const bva reads){
 }
 
 void compUseDef(block* b){
-	b->use = {0}; b->def = {0};
-	const quad* q = (quad*)(getQuadArena().pool) + b->q1; for(const uint32_t qo = b->q1; qo < b->q2; qo++, q++){
+	b->use = (bva){0}; b->def = (bva){0};
+	const quad* q = (quad*)(getQuadArena()->pool) + b->q1; for(uint32_t qo = b->q1; qo < b->q2; qo++, q++){
 		bva reads = findReads(*q);
-		bva write = {0}; if(isWriteQuad(q->op) && validType(q->o1)) write = UBVA(write, SBBVA(q->o1.vReg));
+		bva write = (bva){0}; if(isWriteQuad(q->op) && validType(q->o1)) write = UBVA(write, SBBVA(q->o1.vReg));
 		b->use = UBVA(b->use, NBVA(reads, b->def)); b->def = UBVA(b->def, write);
 	}
 }
 
-
-
-// to compute live ins and outs do this:
-// have to do multiple passes until live_in and live_out stop changing for all blocks
-// compute live_in first, it should be:   use | (live_out NBVA def)
-// compute live_out second, it should be SUM(live_in of potential branch nodes)
-
-// fuckass post order reversed list to start
-
+uint32_t blocksTraversed = 0;
+void postOrderBlocks(block** postOrderTraversal, block* curBlock, const uint32_t numBlocks){
+	if(!curBlock || curBlock->visitNum) return;
+	for(uint32_t i = 0; i < curBlock->numPBranches; i++){
+		postOrderBlocks(postOrderTraversal, curBlock->pBranches[i], numBlocks);
+	}
+	postOrderTraversal[blocksTraversed++] = curBlock;
+	curBlock->visitNum++;
+}
 
 void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
@@ -249,7 +264,6 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 
 	// change quadgen to save a separate stack of labels and their related quad indices
 	// will massively speed up pass 2
-	
 	// to construct blocks run 3 passes
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
@@ -322,11 +336,10 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 			}
 		}
 	}
-	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printf("]\n");
-	printBlocks(blocksCnstr);
-	printfD("FRAME END\n");
 	
-
+	block** postOrderTraversal = (block**)allocateOnScratchpad(sizeof(block*) * blocksCnstr);
+	postOrderTraversal += blocksCnstr - 1;
+	postOrderBlocks(postOrderTraversal, activeBlocks, blocksCnstr);
 	// pass 2 intertwined with previous pass, construct jump links. 
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
@@ -342,7 +355,29 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
 	
 	// EDGE CONSTRUCTION:
-	// 
+	// make a reversed post order list of blocks(same as DFS just dont include circular connections)
+	// traverse this reversed list depth first(bottom up) constructing live_in and live_out as u go
+	// to compute live ins and outs do this:
+	// have to do multiple passes until live_in and live_out stop changing for all blocks
+	// compute live_out first, it should be SUM(live_in of potential branch nodes)
+	// compute live_in second, it should be: use | (live_out NBVA def)
+	bool changed = 1;
+	while(changed){
+		changed = 0;
+		for(uint32_t i = 0; i < blocksCnstr; i++){
+			block* curBlock = postOrderTraversal[i];
+			printf("%d\n", curBlock->numPBranches);
+			const bva to = curBlock->liveOut; const bva ti = curBlock->liveIn;
+			for(uint32_t c = 0; c < curBlock->numPBranches; c++){
+				curBlock->liveOut = UBVA(curBlock->liveOut, curBlock->pBranches[c]->liveIn);
+			} curBlock->liveIn = UBVA(curBlock->use, NBVA(curBlock->liveOut, curBlock->def));
+			if(!EQBVA(curBlock->liveIn, ti) || !EQBVA(curBlock->liveOut, to)) changed = 1;
+		}
+	}
+	
+	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printf("]\n");
+	printBlocks(blocksCnstr);
+	printfD("FRAME END\n");
 }
 
 void printEdges(){
