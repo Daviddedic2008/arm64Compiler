@@ -1,13 +1,6 @@
-int sum(int start, int end){
-	int result = 0;
-	while(start < end){
-		result += start;
-		start++;
-	}
-	return result;
-}
-
 int main(){
-	int x = 5; int y = 6;
-	int r = sum(x, y);
+	int x = 5;
+	if(x > 5){
+		x = 7;
+	}
 }

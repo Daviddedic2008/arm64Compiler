@@ -57,6 +57,7 @@ int main(int argc, char* argv[]){
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
 		printQuads();
 		*/
+		switchFile(PREG);
 		cfgPassTest();
 		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
 		freeScratchpad();

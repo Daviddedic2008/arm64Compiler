@@ -1,4 +1,8 @@
-EDGE<<R(1, 9) : R(2, 9)>>
-EDGE<<R(1, 9) : R(3, 12)>>
-EDGE<<R(2, 9) : R(3, 12)>>
-EDGE<<R(14, 16) : R(15, 17)>>
+
+DEF main
+x0 = LOADIMM #5
+CMP x0, #5
+IF f_LE JMP label_0
+x0 = LOADIMM #7
+label_0:
+RET #0

@@ -135,7 +135,7 @@ void printBVA(const bva b){
 	bool firstF = 1; printfD("{");
 	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++){
 		uint16_t off = 0; for(uint64_t mask = 1; mask != 1 << 63; mask <<= 1, off++) if(b.arr[u64] & mask) 
-		{if(!firstF) printfD(", "); firstF = 0; printfD("%d\n", off);}
+		{if(!firstF) printfD(", "); firstF = 0; printfD("%d", off);}
 	}
 	printfD("}\n");
 }
@@ -171,6 +171,8 @@ void printBlock(const block* b){
 		} printfD("}");
 	}
 	printfD("\n");
+	printfD("USE: "); printBVA(b->use);
+	printfD("DEF: "); printBVA(b->def);
 	printfD("LIVE IN: "); printBVA(b->liveIn);
 	printfD("LIVE OUT: "); printBVA(b->liveOut);
 }
@@ -285,12 +287,14 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	const w64* w64ids = ((w64*)getLblInds()); uint32_t blocksCnstr = 0;
 	int64_t i1 = 0, i2 = 0; do{
 		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, startQ) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : endQ-1, .lId = blocksCnstr};
+		compUseDef(&newBlock);
 		const quad endQ = ((quad*)(quadArena->pool))[newBlock.q2];
 		const uint32_t npb = 1 + endQ.op == JMPCND;
 		activeBlocks[blocksCnstr++] = newBlock;
 		i2++, i1++;
 	}while(i2 < numQids); if(blocksCnstr != expectedNB){
 		block newBlock = (block){.q1 = lastQid, .q2 = endQ-1, .lId = blocksCnstr};
+		compUseDef(&newBlock);
 		activeBlocks[blocksCnstr++] = newBlock;
 	}
 	for(uint32_t bId = 0; bId < blocksCnstr; bId++){
@@ -366,7 +370,6 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 		changed = 0;
 		for(uint32_t i = 0; i < blocksCnstr; i++){
 			block* curBlock = postOrderTraversal[i];
-			printf("%d\n", curBlock->numPBranches);
 			const bva to = curBlock->liveOut; const bva ti = curBlock->liveIn;
 			for(uint32_t c = 0; c < curBlock->numPBranches; c++){
 				curBlock->liveOut = UBVA(curBlock->liveOut, curBlock->pBranches[c]->liveIn);
@@ -375,7 +378,7 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 		}
 	}
 	
-	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printf("]\n");
+	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printfD("]\n");
 	printBlocks(blocksCnstr);
 	printfD("FRAME END\n");
 }

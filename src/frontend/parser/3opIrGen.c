@@ -209,7 +209,7 @@ int evalImm(const tokenType op, const symbol o1, const symbol o2){
 }
 
 symbol linearizeNode(const linData dat){
-	symbol secondaryTarget;
+	symbol secondaryTarget = {0};
 	node* n = dat.n; symbol targetReg = dat.targetReg; bool isConditional = dat.isConditional; memType valType = dat.valType;
 	switch(n->type){
 		case identifierNode:
@@ -258,13 +258,13 @@ symbol linearizeNode(const linData dat){
 				skipo1o2:;
 				skpOtherOps:;
 				if(targetReg.vReg == -1 && o1.type == literalSymbol && o2.type == literalSymbol) return (symbol){.type = literalSymbol, .vReg = evalImm(n->val.type, o1, o2)};
-				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg = newVReg(targetReg.varType.type == keywordIntPtr ? keywordInt : keywordChar);}
+				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){if(targetReg.isAddr) secondaryTarget = targetReg; targetReg = newVReg(targetReg.varType.type == keywordIntPtr ? keywordInt : keywordChar);}
 				targetReg.varType = combineTypes(o1.varType, o2.varType);
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
 				if(isConditional){
 					emitQuad((quad){.op = CMP, .o1 = targetReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 					return (symbol){.type = flag, .vReg = flagEq};
-				} if(secondaryTarget.isAddr){
+				} if(secondaryTarget.isAddr){ // BUGS WITH SECONDARY TARGET
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
 				}
 				return targetReg;

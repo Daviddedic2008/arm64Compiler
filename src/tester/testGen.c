@@ -80,11 +80,11 @@ void storeRecentRun(){
         }
     }
 
-    const char* files[] = {"src.txt", "3AC.txt", "AST.txt", "EDGES.txt", "RANGES.txt"};
+    const char* files[] = {"src.txt", "3AC.txt", "AST.txt", "EDGES.txt", "RANGES.txt", "REGALLOC.txt"};
     char srcPath[MAX_PATH];
     char destPath[MAX_PATH];
 	
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         snprintf(srcPath, sizeof(srcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\lastRun\\%s", files[i]);
         snprintf(destPath, sizeof(destPath), "%s\\%s", baseDir, files[i]);
 
