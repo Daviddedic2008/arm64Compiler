@@ -1,0 +1,18 @@
+
+FRAME [main]
+BLOCK[0]<0, 6>LINK{2, 1}
+USE: {}
+DEF: {0, 1, 2, 3}
+LIVE IN: {}
+LIVE OUT: {2}
+BLOCK[1]<6, 8>LINK{2}
+USE: {2}
+DEF: {3}
+LIVE IN: {2}
+LIVE OUT: {}
+BLOCK[2]<8, 9>
+USE: {}
+DEF: {}
+LIVE IN: {}
+LIVE OUT: {}
+FRAME END

@@ -1,0 +1,7 @@
+int main(){
+	int a = 5; int b = 7; int c = 6;
+	int x = a + b;
+	if(x > 5){
+		x = 7 + c;
+	}
+}
