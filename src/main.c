@@ -1,4 +1,4 @@
-#include "backend/regAllocator/regAllocator.h"
+#include "backend/interPasses/rce.h"
 #include "helper/filereader.h"
 #include <stdio.h>
 #include "tester/testGen.h"
@@ -39,8 +39,6 @@ int main(int argc, char* argv[]){
 		initializeScratchpad(1024);
 		arena quads = linearizeAST(&b);
 		printQuads();
-		constructRanges(quads);
-		printfCND("\n\n");
 		/*
 		printfCND("\x1b[1;32mFound Live Ranges\x1b[0m\n\n");
 		printfCND("\x1b[36mRanges\x1b[0m\n\n");
@@ -53,12 +51,14 @@ int main(int argc, char* argv[]){
 		switchFile(PEDGE);
 		printEdges();
 		chaitinPass();
+		*/
+		switchFile(PREG);
+		printfCND("\n\n\x1b[36mBlocks\x1b[0m\n");
+		cfgPassTest();
+		rmRedundantWrites();
 		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
 		printQuads();
-		*/
-		switchFile(PREG);
-		cfgPassTest();
 		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
 		freeScratchpad();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();

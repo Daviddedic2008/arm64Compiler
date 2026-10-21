@@ -17,7 +17,8 @@ add_executable(GPC
 	src/helper/algos.c
 	src/helper/filereader.c
 	src/tester/testGen.c
-	src/backend/regAllocator/regAllocator.c
+	src/backend/regAllocator/regAlloc.c
+	src/backend/interPasses/rce.c
 )
 
 set_source_files_properties(src/tester/testGen.c PROPERTIES COMPILE_DEFINITIONS "main=testGen_main")

@@ -8,13 +8,13 @@ typedef struct{
 }range;
 
 void printRanges();
-
 void printEdges();
-
 void chaitinPass();
-
 void cfgPassTest();
 
 void printQuadsPhysical();
+
+bool isWriteQuad(uint32_t op);
+bool validType(const symbol s);
 
 #define numGPRegs 30

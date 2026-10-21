@@ -29,6 +29,7 @@ uint32_t getTotalVRegs();
 arena* getQuadArena();
 
 void printSymbol(symbol s);
+bool compareSymbols(const symbol s1, const symbol s2);
 
 void printQuads();
 

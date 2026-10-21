@@ -1,11 +1,22 @@
 
-DEF main
-loc_id(0)_INT = LOADIMM #5
-loc_id(1)_INT = LOADIMM #7
-loc_id(2)_INT = LOADIMM #6
-loc_id(3)_INT = loc_id(0)_INT ADD loc_id(1)_INT
-CMP loc_id(3)_INT, #5
-IF f_LE JMP label_0
-loc_id(3)_INT = #7 ADD loc_id(2)_INT
+DEF helper
+arg_0_INT = MOV x0
+arg_1_INT = MOV x1
+JMP_LBL label_1
 label_0:
+arg_0_INT = arg_0_INT ADD #1
+label_1:
+CMP arg_0_INT, arg_1_INT
+IF f_LT JMP label_0
+label_2:
+RET arg_0_INT
+
+DEF main
+loc_id(2)_INT = LOADIMM #5
+loc_id(3)_INT = LOADIMM #7
+x0 = MOV loc_id(2)_INT
+x1 = MOV loc_id(3)_INT
+ALIGN
+CALL helper
+loc_id(4)_INT = MOV x0
 RET #0

@@ -147,6 +147,7 @@ bva findReads(const quad q){
 	bva ret = (bva){0};
 	if(validType(q.o2)) SET_BIT_BVA(ret, q.o2.vReg);
 	if(validType(q.o3)) SET_BIT_BVA(ret, q.o3.vReg);
+	if(q.op == RET && validType(q.o1)) SET_BIT_BVA(ret, q.o1.vReg);
 	return ret;
 }
 

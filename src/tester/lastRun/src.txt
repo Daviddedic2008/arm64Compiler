@@ -1,7 +1,12 @@
-int main(){
-	int a = 5; int b = 7; int c = 6;
-	int x = a + b;
-	if(x > 5){
-		x = 7 + c;
+int helper(int a, int b){
+	while(a < b){
+		a++;
 	}
+	return a;
+}
+
+int main(){
+	int a = 5; int b = 7;
+	int s = helper(a, b);
+	return 0;
 }

@@ -189,7 +189,7 @@ node* parseFuncCall(const token t){
 	node* fcNode = addNode(funcCallNode);
 	fcNode->val = t; expect(parenthesesL);
 	while(peekToken().type != parenthesesR){
-		addChildFromPtr(fcNode, parseExpression(0)); if(peekToken().type == parenthesesR) break; expect(endStatement);
+		addChildFromPtr(fcNode, parseExpression(0)); if(peekToken().type == parenthesesR) break; expect(opComma);
 	} return fcNode;
 }
 
@@ -279,7 +279,7 @@ node* parseFuncDef(){
 	n.val = eatToken();
 	addChild(fdNode, n);
 	fdNode->val = eatToken(); eatToken(); withinFunctionDef = true;
-	while(peekToken().type != parenthesesR){addChildFromPtr(fdNode, parseArgument()); if(peekToken().type == endStatement) eatToken();}
+	while(peekToken().type != parenthesesR){addChildFromPtr(fdNode, parseArgument()); if(peekToken().type == opComma) eatToken();}
 	withinFunctionDef = false;
 	eatToken(); eatToken(); deepenScope();
 	addChildFromPtr(fdNode, parseBody());

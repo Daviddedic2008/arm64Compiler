@@ -123,7 +123,7 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 		if(!ret){
 			memC* nc = newChunk(allocSz);
 			ret = nc->data; nc->used = allocSz;
-		} else{lc->offsetE += allocSz; lc->used += allocSz; ret = ((memC*)ret)->data;}
+		} else{ret = ((memC*)ret)->data + lc->used; lc->offsetE += allocSz; lc->used += allocSz;}
 	} return ret;
 }
 
@@ -141,7 +141,7 @@ uint8_t* reallocChunk(memC* c, uint32_t reallocSz){
 			while(cc != c) cc = c->nextC, prevC = c;
 			if(prevC) prevC->nextC = nc;
 			raw_chunk_free(c); ret = nc->data;
-		} else{c->offsetE += reallocSz; c->used += reallocSz; ret = ((memC*)ret)->data;}
+		} else{ret = ((memC*)ret)->data + c->used; c->offsetE += reallocSz; c->used += reallocSz;}
 	} return ret;
 }
 
@@ -174,6 +174,8 @@ uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw){
 	if(!newM){
 		newM = raw_chunk_alloc(allocSz + sizeof(memC));
 		memcpy(newM, c, allocSz + sizeof(memC));
+		if(globalScratch.endC == c) globalScratch.endC = newM;
+		if(globalScratch.startC == c) globalScratch.startC = newM;
 		raw_chunk_free(c);
 	} retPtr = newM->data + newM->used; newM->used += allocSz;
 	return retPtr;

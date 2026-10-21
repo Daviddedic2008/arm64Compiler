@@ -33,6 +33,7 @@ int8_t isSingleCharToken(const char c){
 		case '|': return opBitwiseOr;
 		case '^': return opBitwiseXor;
 		case '~': return opBitwiseNot;
+		case ',': return opComma;
 		case '!': return opLogicalNot;
 		case '(': return parenthesesL;
 		case ')': return parenthesesR;
@@ -40,14 +41,14 @@ int8_t isSingleCharToken(const char c){
 		case '}': return curlyBraceR;
 		case '[': return squareBraceL;
 		case ']': return squareBraceR;
-		case ';': case ',': return endStatement;
+		case ';': return endStatement;
 	} return -1;
 }
 
 typedef struct{char* str; uint8_t type;}keyData;
 
 keyData keywords[] = {
-	{"int", keywordInt}, {"char", keywordChar}, {"void", keywordVoid}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile},
+	{"int", keywordInt}, {"char", keywordChar}, {"void", keywordVoid}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile}, {"for", keywordFor},
 	{"return", keywordReturn}, {"continue", keywordContinue}, {"break", keywordBreak}, {"case", keywordCase}, {"switch", keywordSwitch}, {"default", keywordDefault}
 }; const uint8_t numKeywords = sizeof(keywords) / sizeof(keyData);
 

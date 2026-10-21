@@ -46,7 +46,7 @@ void printSymbol(symbol s) {
         case local: if(s.physicalReg) goto printPhysical; printfD("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case global: if(s.physicalReg) goto printPhysical; printfD("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
 		case temp: if(s.physicalReg) goto printPhysical; printfD("temp_id(%d)_", s.vReg); printType(s.varType); goto dop;
-        case arg: printfD("arg_%d_", s.vReg); printType(s.varType); goto dop;
+        case arg: if(s.physicalReg) goto printPhysical; printfD("arg_%d_", s.vReg); printType(s.varType); goto dop;
 		printPhysical:
 		printfD("x%d", s.physicalReg-1); break;
 		dop:
@@ -400,7 +400,7 @@ symbol linearizeNode(const linData dat){
 			while(cn != n->lastChild && cn != NULL){
 				if(numArgs < 8){
 					symbol a = linearizeNode((linData){cn, nullSymbol, 0}); a.preferredReg = numArgs+1;
-					emitQuad((quad){.op = MOV, .o1 = a, .o2 = (symbol){.type = physical, .vReg = numArgs}});
+					emitQuad((quad){.op = MOV, .o1 = a, .o2 = (symbol){.type = physical, .vReg = numArgs, .physicalReg = numArgs+1}});
 				}
 				else emitQuad((quad){.op = POP, .o1 = linearizeNode((linData){cn, nullSymbol, 0})});
 				numArgs++; cn = cn->sibling;
@@ -416,7 +416,7 @@ symbol linearizeNode(const linData dat){
 			while(cn != NULL){
 				symbol ln = linearizeNode((linData){cn, nullSymbol, 0});
 				if(numArgs < 8){
-					const symbol physicalSpace = (symbol){.type = physical, .vReg = numArgs};
+					const symbol physicalSpace = (symbol){.type = physical, .vReg = numArgs, .physicalReg = numArgs+1};
 					ln.preferredReg = numArgs + 1;
 					emitQuad((quad){.op = MOV, .o1 = physicalSpace, .o2 = ln});
 				} else{
@@ -508,7 +508,6 @@ symbol linearizeNode(const linData dat){
 						cn = cn->sibling;
 					} cn = n->firstChild->sibling; 
 					const int32_t range = maxCase - minCase; bool mapLookup = ((float)numCases / (range + 1)) >= 0.4f && range < 256;
-					mapLookup = 0;
 					if(mapLookup){
 						symbol mapOffset = newVReg(keywordIntPtr); const uint32_t defaultLabel = numLabels++;
 						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
@@ -604,10 +603,9 @@ symbol linearizeNode(const linData dat){
 	}
 }
 
-bool compareSymbols(const symbol s1, const symbol s2){
-	return s1.type == s2.type && s1.vReg == s2.vReg;
+bool compareSymbols(symbol s1, symbol s2) {
+    return s1.type == s2.type && s1.vReg == s2.vReg;
 }
-
 void referenceOptimizationPass(){
 	uint32_t qi = 0; const uint32_t lm = quadPool.used/sizeof(quad); for(quad* q = (quad*)quadPool.pool; qi < lm; qi++, q++){
 		if(q->op == REF){ (q+1)->skippable = 1;
