@@ -16,7 +16,7 @@ int32_t getWrite(const quad q){
 bool eqOp(const quad q){
 	const int32_t wr = getWrite(q);
 	if(wr) switch(q.op){
-		case MOV: return (q.o1.physicalReg) && q.o1.physicalReg == q.o2.physicalReg;
+		case MOV: return (q.o1.physicalReg && q.o2.physicalReg) && q.o1.physicalReg == q.o2.physicalReg;
 	}
 	return 0;
 }
@@ -24,13 +24,9 @@ bool eqOp(const quad q){
 void rmRedundantWrites(){
 	arena* quadArena = getQuadArena();
 	quad* lastWrite[numGPRegs];
-	uint64_t regUseMask = 0;
 	quad* q = ((quad*)quadArena->pool); for(uint32_t qo = 0; qo < quadArena->used / sizeof(quad); qo++, q++){
-		regUseMask &= ~getPhysicalReads(*q);
 		int32_t wr = getWrite(*q); if(wr){
 			if(eqOp(*q)){q->skippable = 1; continue;}
-			if(regUseMask & (1 << wr)) lastWrite[wr]->skippable = 1;
-			regUseMask |= 1 << wr; lastWrite[wr] = q;
-		}
+		} 
 	}
 }

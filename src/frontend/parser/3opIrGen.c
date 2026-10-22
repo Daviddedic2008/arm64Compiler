@@ -427,7 +427,7 @@ symbol linearizeNode(const linData dat){
 			}
 			emitQuad((quad){.op = ALIGN});
 			emitQuad((quad){.op = CALL, .o1 = (symbol){.type = strSymbol, .str = n->val.str, .strLen = n->val.len}});
-			const symbol r0s = (symbol){.type = physical, .vReg = 0};
+			const symbol r0s = (symbol){.type = physical, .vReg = 0, .physicalReg = 1};
 			if(targetReg.vReg != -1 || targetReg.isAddr) emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = r0s});
 			const symbol retReg = targetReg.vReg == -1 ? r0s : targetReg;
 			if(isConditional){

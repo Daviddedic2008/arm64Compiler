@@ -175,7 +175,7 @@ void buildRanges(const uint32_t startQ, const uint32_t endQ){
 			if(!validType(*s)) continue;
 			range* rt = r + s->vReg;
 			if(rt->vReg == NULL){
-				rangeSyms[s->vReg] = *s; rangeSyms[s->vReg].physicalReg = -1;
+				rangeSyms[s->vReg] = *s; rangeSyms[s->vReg].physicalReg = 0;
 				*rt = (range){.vReg = rangeSyms + s->vReg, .i1 = qi, .i2 = qi};
 				if(s->type == global) rt->i1 = rt->i2 = -1;
 			}
@@ -405,18 +405,20 @@ void decrementFromPool(range* const r){
 }
 
 void findFreeRegister(symbol* const srcReg){
-	bool registerTaken[numGPRegs] = {0};
+	uint8_t registerTaken[numGPRegs + 1] = {0}; // 1-based like physicalReg/preferredReg, [0] = none
 	edge* e = (edge*)edgeArena.pool; for(uint32_t n = 0; n < edgeArena.used/sizeof(edge); n++, e++){
-		int16_t r = -1;
+		int16_t r = 0, pr = 0;
 		if(sameSymbol(*(srcReg), *(e->n1->vReg))){
-			r = e->n2->vReg->physicalReg;
+			r = e->n2->vReg->physicalReg; pr = e->n2->vReg->preferredReg;
 		}
 		else if(sameSymbol(*(srcReg), *(e->n2->vReg))){
-			r = e->n1->vReg->physicalReg;
+			r = e->n1->vReg->physicalReg; pr = e->n1->vReg->preferredReg;
 		}
-		if(r != -1) registerTaken[r] = true;
-	} if(srcReg->preferredReg) if(!registerTaken[srcReg->preferredReg-1]){srcReg->physicalReg = srcReg->preferredReg-1; return;}
-	for(uint32_t r = 0; r < numGPRegs; r++) if(!registerTaken[r]){srcReg->physicalReg = r; return;}
+		if(pr && !r) if(!registerTaken[pr]) registerTaken[pr] = 2;
+		if(r) registerTaken[r] = true;
+	} if(srcReg->preferredReg) if(registerTaken[srcReg->preferredReg] != 1){srcReg->physicalReg = srcReg->preferredReg; return;}
+	for(uint32_t r = 1; r <= numGPRegs; r++) if(!registerTaken[r]){srcReg->physicalReg = r; return;}
+	for(uint32_t r = 1; r <= numGPRegs; r++) if(registerTaken[r] == 2){srcReg->physicalReg = r; return;}
 }
 
 typedef enum quadCheckState{noUse, smblUsed, smblWrite} quadCheck;
@@ -477,7 +479,7 @@ void chaitinPass(){
 	for(int64_t r = (int64_t)curStackPos-1; r >= 0; r--){
 		range* rt = ((range**)vRegStack.data)[r];
 		findFreeRegister(rt->vReg);
-		if(rt->vReg->physicalReg == -1){ anySpill = 1;
+		if(rt->vReg->physicalReg == 0){ anySpill = 1;
 			const uint32_t spStackOff = 0; // idk how to do this yet, have to allocate stack space.
 			// insert spill code & split ranges
 			// at each spill, go through live range and keep separate pool where u store instructions to be added/replaced
@@ -522,9 +524,9 @@ void chaitinPass(){
 	}
 	for(uint32_t qi = curFnStart; qi <= curFnEnd; qi++){
 		quad* q = (quad*)(quadArena->pool) + qi;
-		if(validType(q->o1)) q->o1.physicalReg = ((range*)(ranges.data))[q->o1.vReg].vReg->physicalReg+1;
-		if(validType(q->o2)) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg+1;
-		if(validType(q->o3)) q->o3.physicalReg = ((range*)(ranges.data))[q->o3.vReg].vReg->physicalReg+1;
+		if(validType(q->o1)) q->o1.physicalReg = ((range*)(ranges.data))[q->o1.vReg].vReg->physicalReg;
+		if(validType(q->o2)) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg;
+		if(validType(q->o3)) q->o3.physicalReg = ((range*)(ranges.data))[q->o3.vReg].vReg->physicalReg;
 	}
 	if(anySpill){
 		// go through pool of ADD and REPLACE instructions. sort in order from first to last

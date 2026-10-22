@@ -1,31 +1,31 @@
 
-FRAME [helper]
-BLOCK[0]<0, 3>LINK{3}
+FRAME [sum]
+BLOCK[0]<0, 4>LINK{3}
 USE: {}
-DEF: {0, 1}
+DEF: {0, 1, 2}
 LIVE IN: {}
-LIVE OUT: {0, 1}
-BLOCK[1]<3, 4>LINK{2}
+LIVE OUT: {0, 1, 2}
+BLOCK[1]<4, 5>LINK{2}
 USE: {}
 DEF: {}
 LIVE IN: {}
 LIVE OUT: {}
-BLOCK[2]<4, 6>LINK{3}
-USE: {0}
-DEF: {0}
-LIVE IN: {0, 1}
-LIVE OUT: {0, 1}
-BLOCK[3]<6, 8>LINK{2, 4}
+BLOCK[2]<5, 8>LINK{3}
+USE: {0, 2}
+DEF: {0, 2}
+LIVE IN: {0, 1, 2}
+LIVE OUT: {0, 1, 2}
+BLOCK[3]<8, 10>LINK{2, 4}
 USE: {1}
 DEF: {}
-LIVE IN: {0, 1}
-LIVE OUT: {0, 1}
-BLOCK[4]<8, 9>LINK{5}
+LIVE IN: {0, 1, 2}
+LIVE OUT: {0, 1, 2}
+BLOCK[4]<10, 11>LINK{5}
 USE: {}
 DEF: {}
 LIVE IN: {}
 LIVE OUT: {}
-BLOCK[5]<9, 10>
+BLOCK[5]<11, 12>
 USE: {}
 DEF: {}
 LIVE IN: {}
@@ -33,27 +33,9 @@ LIVE OUT: {}
 FRAME END
 
 FRAME [main]
-BLOCK[0]<11, 19>
+BLOCK[0]<13, 21>
 USE: {}
-DEF: {2, 3, 4}
+DEF: {3, 4, 5}
 LIVE IN: {}
 LIVE OUT: {}
 FRAME END
-
-DEF helper
-JMP_LBL label_1
-label_0:
-x0 = x0 ADD #1
-label_1:
-CMP x0, x1
-IF f_LT JMP label_0
-label_2:
-RET x0
-
-DEF main
-x0 = LOADIMM #5
-x1 = LOADIMM #7
-ALIGN
-CALL helper
-x0 = MOV x0
-RET #0

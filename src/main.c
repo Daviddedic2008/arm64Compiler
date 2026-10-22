@@ -40,16 +40,9 @@ int main(int argc, char* argv[]){
 		arena quads = linearizeAST(&b);
 		printQuads();
 		/*
-		printfCND("\x1b[1;32mFound Live Ranges\x1b[0m\n\n");
-		printfCND("\x1b[36mRanges\x1b[0m\n\n");
-		switchFile(PRANGE);
-		printRanges();
+		
 		printfCND("\n\n");
 		constructEdges();
-		printfCND("\x1b[1;32mConstructed Edges\x1b[0m\n\n");
-		printfCND("\x1b[36mEdges\x1b[0m\n\n");
-		switchFile(PEDGE);
-		printEdges();
 		chaitinPass();
 		*/
 		switchFile(PREG);
@@ -58,6 +51,7 @@ int main(int argc, char* argv[]){
 		rmRedundantWrites();
 		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
+		switchFile(PAR);
 		printQuads();
 		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
 		freeScratchpad();

@@ -16,6 +16,8 @@ bool getFlush(){
 	return flushStdout;
 }
 
+const char* files[] = {"SRC.c", "3AC.txt", "AST.txt", "PAR.txt"};
+
 BOOL SavePersistentInt(const char* valueName, DWORD value){
     HKEY hKey;
     long status = RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\davidscompiler1234", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
@@ -79,12 +81,11 @@ void storeRecentRun(){
             return;
         }
     }
-
-    const char* files[] = {"src.txt", "3AC.txt", "AST.txt", "EDGES.txt", "RANGES.txt", "REGALLOC.txt"};
+	
     char srcPath[MAX_PATH];
     char destPath[MAX_PATH];
 	
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < ENDFILE; i++) {
         snprintf(srcPath, sizeof(srcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\lastRun\\%s", files[i]);
         snprintf(destPath, sizeof(destPath), "%s\\%s", baseDir, files[i]);
 
@@ -193,14 +194,13 @@ int diff_files(const char *path1, const char *path2) {
 
 
 uint8_t compareOutputs(const uint32_t testNumber){
-    const char* files[] = {"src.txt", "3AC.txt", "AST.txt", "EDGES.txt", "RANGES.txt"};
     char srcPath[MAX_PATH];
     char destPath[MAX_PATH];
     char baseDir[MAX_PATH];
     
     snprintf(baseDir, sizeof(baseDir), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\testSuites\\%lutest", (unsigned long)testNumber);
     
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < ENDFILE; i++) {
         snprintf(srcPath, sizeof(srcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\lastRun\\%s", files[i]);
         snprintf(destPath, sizeof(destPath), "%s\\%s", baseDir, files[i]);
         

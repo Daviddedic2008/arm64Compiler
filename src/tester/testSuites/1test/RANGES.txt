@@ -1,1 +1,0 @@
-RANGE(1 : 4)<<loc_id(0)_INT>> COST<3>
