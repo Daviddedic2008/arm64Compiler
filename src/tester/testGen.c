@@ -16,7 +16,7 @@ bool getFlush(){
 	return flushStdout;
 }
 
-const char* files[] = {"SRC.c", "3AC.txt", "AST.txt", "PAR.txt"};
+const char* files[] = {[PSRC] = "SRC.c", [P3AC] = "3AC.txt", [PAST] = "AST.txt", [PREG] = "REGALLOC.txt", [PAR] = "PAR.txt"};
 
 BOOL SavePersistentInt(const char* valueName, DWORD value){
     HKEY hKey;
@@ -227,7 +227,7 @@ void runTests(){
     char testSrcPath[MAX_PATH];
 
     for (DWORD i = 1; i <= numTests; i++) {
-        snprintf(testSrcPath, sizeof(testSrcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\testSuites\\%lutest\\src.txt", (unsigned long)i);
+        snprintf(testSrcPath, sizeof(testSrcPath), "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\testSuites\\%lutest\\%s", (unsigned long)i, files[PSRC]);
         
         snprintf(command, sizeof(command), "C:\\CMake_Projects\\CortexM4CompilerV2\\compile.bat \"%s\"", testSrcPath);
 

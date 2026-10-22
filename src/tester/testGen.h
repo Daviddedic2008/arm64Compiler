@@ -7,7 +7,7 @@ static const char* const pathSrc = "C:\\CMake_Projects\\CortexM4CompilerV2\\src\
 static const char* const pathReg = "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\lastRun\\REGALLOC.txt";
 static const char* const pathPar = "C:\\CMake_Projects\\CortexM4CompilerV2\\src\\tester\\lastRun\\PAR.txt";
 
-typedef enum{P3AC, PAST, PEDGE, PRANGE, PSRC, PREG, PAR, ENDFILE}testFile;
+typedef enum{P3AC, PAST, PSRC, PREG, PAR, ENDFILE}testFile;
 
 static const char* paths[] = {[PSRC] = pathSrc, [P3AC] = path3AC, [PAST] = pathAST, [PREG] = pathReg, [PAR] = pathPar}; 
 
