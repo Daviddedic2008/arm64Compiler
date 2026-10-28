@@ -9,12 +9,12 @@ typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode, statementNode
 }nodeType;
 
-typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, temp, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
+typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, refSymbol, temp, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
 
 typedef enum dirtyType : bool {dirty, clean} dirtyType;
 
 typedef struct{
-	symbolType type; token varType; uint32_t szArr; union{int64_t vReg; char* str; void* frame;};
+	symbolType type; token varType; uint32_t szArr; uint32_t localOff; union{int64_t vReg; char* str; void* frame;};
 	uint8_t strLen; bool isAddr; bool isDirty; token name; uint32_t scopeDepth; uint16_t preferredReg; uint16_t spillCost; uint32_t physicalReg;
 }symbol;
 

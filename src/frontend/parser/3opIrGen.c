@@ -43,6 +43,7 @@ void printSymbol(symbol s) {
             else if (s.vReg == 29) printfD("fp");
             else printfD("x%d", s.vReg);
             break;
+		case refSymbol: printfD("REF[v%d]", s.vReg); break;
         case local: if(s.physicalReg) goto printPhysical; printfD("loc_id(%d)_", s.vReg); printType(s.varType); goto dop;
         case global: if(s.physicalReg) goto printPhysical; printfD("global_id(%d)_", s.vReg); printType(s.varType); goto dop;
 		case temp: if(s.physicalReg) goto printPhysical; printfD("temp_id(%d)_", s.vReg); printType(s.varType); goto dop;
@@ -67,11 +68,16 @@ void printQuad(quad q) {
         case ADD: case SUB: case MUL: case DIV: case AND: case OR: case XOR:
             printSymbol(q.o1); printfD(" = "); printSymbol(q.o2); printfD(" %s ", op_names[q.op]); printSymbol(q.o3);
             break;
-        case MOV: case LOADIMM: case LOAD: case LABEL_MAP:
+        case MOV: case LABEL_MAP:
             printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2);
             break;
+		case LOAD: case LOADIMM:
+			printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); if(q.o3.type) printfD("["); printSymbol(q.o2);
+			if(q.o3.type){printfD(" + "); printSymbol(q.o3); printfD("]");}
+            break;
         case STORE:
-            printfD("STORE "); printSymbol(q.o2); printfD(" -> ["); printSymbol(q.o1); printfD(" + "); printSymbol(q.o3); printfD("]");
+            printfD("STORE "); printSymbol(q.o2); printfD(" -> "); 
+			if(q.o3.type) printfD("["); printSymbol(q.o1); if(q.o3.type){printfD(" + "); printSymbol(q.o3); printfD("]");}
             break;
         case JMPCND: printfD("IF "); printSymbol(q.o2); printfD(" JMP label_%d", q.o1.vReg); break;
         case CMP: printfD("CMP "); printSymbol(q.o1); printfD(", "); printSymbol(q.o2); break;
@@ -143,11 +149,6 @@ void initFrameDescPool(){
 	frameDescriptorVregs = newArena(sizeof(symbol) * 128);
 }
 
-typedef struct{
-	uint32_t stackSize;
-	symbol* vars; uint32_t numVars
-}frameDescriptor;
-
 arena frameDescriptors; frameDescriptor* curDescriptor = NULL;
 
 frameDescriptor* newDescriptor(){
@@ -155,11 +156,17 @@ frameDescriptor* newDescriptor(){
 	return writeElement(&frameDescriptors, &wr, sizeof(frameDescriptor));
 }
 
+frameDescriptor* getFrameDescriptor(const uint32_t id){
+	return (frameDescriptor*)(frameDescriptors.pool) + id;
+}
+void frameVreg(symbol s){
+	uint32_t idx = 0; for(symbol* sp = curDescriptor->vars; idx < curDescriptor->numVars; sp++, idx++) if(compareSymbols(s, *sp)) return;
+	writeElement(&frameDescriptorVregs, &s, sizeof(symbol)); if(curDescriptor != NULL) curDescriptor->numVars++;
+}
+
 symbol newVReg(const tokenType varType){
 	symbol nr;
 	nr = (symbol){.type = fncsEncountered ? local : temp, .vReg = curTempVReg++, .varType = (token){.type = varType}};
-	writeElement(&frameDescriptorVregs, &nr, sizeof(symbol));
-	if(curDescriptor != NULL) curDescriptor->numVars++;
 	return nr;
 }
 
@@ -282,7 +289,28 @@ symbol linearizeNode(const linData dat){
 				}
 				return isConditional ? flagSmbl : targetReg;
 			}
-			case opReference: case opDereference: case opBitwiseNot: case opNegate: case opLogicalNot:{
+			case opReference:{
+				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); bool extraStore = targetReg.isAddr && targetReg.type != label;
+				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){
+					secondaryTarget = targetReg; targetReg = newVReg(keywordInt);
+					switch(o1.varType.type){
+						case keywordInt:
+						targetReg.varType.type = keywordIntPtr; targetReg.varType.val = 1; break;
+						case keywordChar:
+						targetReg.varType.type = keywordCharPtr; targetReg.varType.val = 1; break;
+						case keywordIntPtr: case keywordCharPtr:
+						targetReg.varType.type = o1.varType.type; targetReg.varType.val = o1.varType.val + 1; break;
+					}
+				}
+				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
+				emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = o1, .o3 = (symbol){.type = refSymbol, .vReg = o1.vReg}});
+				frameVreg(o1); // store for later in f desc
+				if(extraStore){
+					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
+				}
+				return targetReg;
+			}
+			case opBitwiseNot: case opNegate: case opLogicalNot:{
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0});
 				if(valType == lvalue && n->val.type == opDereference){
 					o1.isAddr = true;
@@ -292,21 +320,8 @@ symbol linearizeNode(const linData dat){
 				extraStore = targetReg.isAddr && targetReg.type != label;
 				if((targetReg.vReg == -1 || targetReg.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg(keywordInt);
-					if(n->val.type == opReference){
-						switch(targetReg.varType.type){
-							case keywordInt:
-							targetReg.varType.type = keywordIntPtr; targetReg.varType.val = 1; break;
-							case keywordChar:
-							targetReg.varType.type = keywordCharPtr; targetReg.varType.val = 1; break;
-							case keywordIntPtr: case keywordCharPtr:
-							targetReg.varType.val += 1; break;
-						}
-					}	
-				}				
-				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
-				if(n->val.type == opReference){
-					emitQuad((quad){.op = STORE, .o1 = targetReg, .o2 = o1});
 				}
+				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				if(extraStore){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
 				}

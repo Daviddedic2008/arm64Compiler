@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-arena newArena(const uint32_t sz){return (arena){.pool = malloc(sz), .allocated = sz, .used = 0};}
+#define minSzArena 2048
+
+arena newArena(const uint32_t sz){const uint32_t msz = sz > minSzArena ? sz : minSzArena; return (arena){.pool = malloc(msz), .allocated = msz, .used = 0};}
 
 void* writeElement(arena* a, const void* data, const uint32_t wrSz){
 	if(a->used + wrSz > a->allocated){a->pool = realloc(a->pool, a->allocated * 2);}
@@ -65,7 +67,11 @@ static inline void* raw_chunk_alloc(size_t bytes) {
 
 static inline void* raw_chunk_realloc_in_place(void* ptr, size_t bytes) {
 	(void)ptr; (void)bytes;
-	return NULL; 
+	return NULL;
+}
+
+static inline void* raw_chunk_realloc(void* ptr, size_t bytes) {
+	return realloc(ptr, bytes);
 }
 
 static inline void raw_chunk_free(void* ptr) {
@@ -127,24 +133,6 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 	} return ret;
 }
 
-uint8_t* reallocChunk(memC* c, uint32_t reallocSz){
-	if(reallocSz % minChunkSz) reallocSz = (reallocSz / minChunkSz) * minChunkSz + minChunkSz;
-	uint8_t* ret = NULL;
-	if(c->used + reallocSz < c->allocated){
-		ret = c->data + c->used; c->used += reallocSz;
-	} else{
-		ret = raw_chunk_realloc_in_place(c, sizeof(memC) + c->used + reallocSz);
-		if(!ret){
-			memC* nc = newChunk(reallocSz);
-			memcpy(nc, c, sizeof(memC) + nc->used);
-			memC* cc = globalScratch.startC; memC* prevC = NULL;
-			while(cc != c) cc = c->nextC, prevC = c;
-			if(prevC) prevC->nextC = nc;
-			raw_chunk_free(c); ret = nc->data;
-		} else{ret = ((memC*)ret)->data + c->used; c->offsetE += reallocSz; c->used += reallocSz;}
-	} return ret;
-}
-
 uint8_t* writeToScratchpad(const void* data1, const uint32_t wrSz){
 	uint8_t* data = (uint8_t*)data1;
 	uint8_t* allM = allocateOnScratchpad(wrSz);
@@ -166,17 +154,22 @@ uint8_t* getScratchEl(const uint32_t offset){
 	} return NULL;
 }
 
-uint8_t* resizeChunk(memC* c, const uint32_t allocSzRaw){
-	const uint32_t allocSz = allocSzRaw < minChunkSz ? minChunkSz : allocSzRaw;
-	uint8_t* retPtr = NULL;
-	if((c->used + allocSz) < c->allocated){retPtr = c->data + c->used; c->used += allocSz; return retPtr;}
-	memC* newM = raw_chunk_realloc(c, allocSz + sizeof(memC));
-	if(!newM){
-		newM = raw_chunk_alloc(allocSz + sizeof(memC));
-		memcpy(newM, c, allocSz + sizeof(memC));
-		if(globalScratch.endC == c) globalScratch.endC = newM;
-		if(globalScratch.startC == c) globalScratch.startC = newM;
-		raw_chunk_free(c);
-	} retPtr = newM->data + newM->used; newM->used += allocSz;
-	return retPtr;
+// appends addSz bytes to *cp and returns a pointer to them. grows (and possibly moves) the chunk if the total doesnt fit;
+// *cp is updated when it moves, so pointers into the old chunk's data are stale after a grow
+uint8_t* expandChunk(memC** cp, const uint32_t addSz){
+	memC* c = *cp;
+	const uint32_t needSz = c->used + addSz;
+	if(needSz > c->allocated){
+		const uint32_t newSz = (c->allocated * 2 > needSz) ? c->allocated * 2 : needSz;
+		memC* nc = raw_chunk_realloc(c, sizeof(memC) + newSz);
+		if(!nc) return NULL;
+		if(nc != c){
+			if(nc->prevC) nc->prevC->nextC = nc; else globalScratch.startC = nc;
+			if(nc->nextC) nc->nextC->prevC = nc; else globalScratch.endC = nc;
+		}
+		nc->offsetE += newSz - nc->allocated; globalScratch.allocatedMem += newSz - nc->allocated;
+		nc->allocated = newSz; c = *cp = nc;
+	}
+	uint8_t* ret = c->data + c->used; c->used = needSz;
+	return ret;
 }

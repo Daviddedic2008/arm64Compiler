@@ -39,12 +39,6 @@ int main(int argc, char* argv[]){
 		initializeScratchpad(1024);
 		arena quads = linearizeAST(&b);
 		printQuads();
-		/*
-		
-		printfCND("\n\n");
-		constructEdges();
-		chaitinPass();
-		*/
 		switchFile(PREG);
 		printfCND("\n\n\x1b[36mBlocks\x1b[0m\n");
 		cfgPassTest();

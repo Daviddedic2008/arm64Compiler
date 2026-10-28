@@ -39,6 +39,13 @@ typedef struct{
 	uint32_t qId, label;
 }lblInd;
 
+typedef struct{
+	uint32_t stackSize;
+	symbol* vars; uint32_t numVars;
+}frameDescriptor;
+
+frameDescriptor* getFrameDescriptor(const uint32_t id);
+
 lblInd* getLblInds();
 uint32_t getNumLbls();
 uint32_t getLabelQID(const uint32_t lbl);

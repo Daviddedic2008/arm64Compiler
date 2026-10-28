@@ -1,24 +1,26 @@
 
-DEF sum
-arg_0_INT = MOV x0
-arg_1_INT = MOV x1
-loc_id(2)_INT = LOADIMM #0
-JMP_LBL label_1
-label_0:
-loc_id(2)_INT = loc_id(2)_INT ADD arg_0_INT
-arg_0_INT = arg_0_INT ADD #1
-label_1:
-CMP arg_0_INT, arg_1_INT
-IF f_LT JMP label_0
-label_2:
-RET #0
-
 DEF main
-loc_id(3)_INT = LOADIMM #0
-loc_id(4)_INT = LOADIMM #7
-x0 = MOV loc_id(3)_INT
-x1 = MOV loc_id(4)_INT
-ALIGN
-CALL sum
-loc_id(5)_INT = MOV x0
-RET #0
+loc_id(0)_INT = LOADIMM #0
+loc_id(1)_INT = LOADIMM #1
+loc_id(2)_INT = LOADIMM #2
+loc_id(3)_INT = LOADIMM #3
+loc_id(4)_INT = LOADIMM #4
+loc_id(5)_INT = LOADIMM #5
+loc_id(6)_INT = LOADIMM #6
+loc_id(7)_INT = LOADIMM #7
+loc_id(8)_INT = LOADIMM #8
+loc_id(9)_INT = LOADIMM #9
+loc_id(10)_INT = LOADIMM #10
+loc_id(11)_INT = LOADIMM #11
+loc_id(12)_INT = LOADIMM #12
+loc_id(13)_INT = LOADIMM #13
+loc_id(14)_INT = LOADIMM #14
+loc_id(15)_INT = LOADIMM #15
+loc_id(16)_INT = LOADIMM #16
+loc_id(17)_INT = LOADIMM #17
+loc_id(18)_INT = LOADIMM #18
+loc_id(19)_INT = LOADIMM #19
+loc_id(20)_INT = LOADIMM #20
+loc_id(21)_INT = LOADIMM #21
+loc_id(22)_INT = LOADIMM #22
+RET loc_id(0)_INT

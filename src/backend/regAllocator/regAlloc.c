@@ -62,6 +62,7 @@ typedef struct{
 
 // CHANGED: 1 -> 1ULL, (1 << 32+) is UB and dropped every vReg with bit%64 >= 31
 #define SET_BIT_BVA(bvar, bit) (bvar).arr[(bit)/64] |= (1ULL << ((bit) % 64)), (bvar)
+#define CHECK_BIT_BVA(bvar, bit) (((bvar).arr[(bit)/64] & (1ULL << ((bit) % 64))) != 0)
 
 bva UBVA(bva bva1, const bva bva2){
 	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) bva1.arr[u64] |= bva2.arr[u64];
@@ -77,6 +78,8 @@ bva NBVA(bva bva1, const bva bva2){
 	for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) bva1.arr[u64] &= ~bva2.arr[u64];
 	return bva1;
 }
+
+uint8_t NZBVA(const bva b){for(uint32_t u64 = 0; u64 < BITVEC_WORDS; u64++) if(b.arr[u64]) return 1; return 0;}
 
 bva SBBVA(const uint32_t bit){
 	bva ret = (bva){0}; return SET_BIT_BVA(ret, bit);
@@ -98,10 +101,11 @@ void printBVA(const bva b){
 
 typedef struct block{
 	uint32_t q1, q2, lId, visitNum;
-	uint32_t numPBranches;
+	uint32_t numPBranches, refVisit;
 	struct block** pBranches;
 	bva liveOut, liveIn;
 	bva def, use;
+	bva refIn, refOut;
 }block;
 
 block* activeBlocks;
@@ -160,8 +164,8 @@ symbol* rangeSyms;
 uint8_t* edgeSeen; uint32_t edgeSeenDim; // nvr x nvr bit matrix, dedups edges
 uint32_t curFnStart, curFnEnd;
 
-void cfgEdges(const uint32_t startQ, const uint32_t endQ);
-void chaitinPass();
+void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID);
+void chaitinPass(const uint32_t fID);
 
 void buildRanges(const uint32_t startQ, const uint32_t endQ){
 	const uint32_t nvr = getTotalVRegs();
@@ -218,15 +222,41 @@ void newEdge(bva write, bva curLive){
 	}
 }
 
-void allocFunction(const uint32_t startQ, const uint32_t endQ){
+void allocFunction(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 	curFnStart = startQ; curFnEnd = endQ;
 	buildRanges(startQ, endQ);
 	resetEdges();
-	cfgEdges(startQ, endQ);
+	cfgEdges(startQ, endQ, fID);
 }
 
-void chaitinBriggsAlloc(const uint32_t startQ, const uint32_t endQ){
-	chaitinPass();
+void chaitinBriggsAlloc(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
+	chaitinPass(fID);
+}
+typedef struct quadInsertion{
+	quad instr;
+	uint32_t idx;
+}quadInsertion;
+
+memC* quadInsertions;
+
+void initInsertions(){quadInsertions = newChunk(sizeof(quadInsertion) * getNumQuads() / 100);}
+void addInsertion(const quad q, const uint32_t idx){
+	if(q.op == INVALIDOP){quadInsertions->used = 0; return;}
+	*(quadInsertion*)expandChunk(&quadInsertions, sizeof(quadInsertion)) = (quadInsertion){q, idx};
+}
+#define resetInsertions() addInsertion((quad){.op = INVALIDOP}, 0)
+
+void flushInsertions(){
+	const uint32_t nqo = getNumQuads();
+	const uint32_t used = sizeof(quad) * nqo + quadInsertions->used/sizeof(quadInsertion) * sizeof(quad); arena newQuadArena = newArena(used); newQuadArena.used = used;
+	quad* nqp = (quad*)newQuadArena.pool; uint32_t nqid = 0;
+	const quad* curQ = (quad*)(getQuadArena()->pool); uint32_t curQO = 0; for(uint32_t ii = 0; ii < quadInsertions->used/sizeof(quadInsertion); ii++){
+		quadInsertion* qi = (quadInsertion*)quadInsertions->data + ii;
+		for(;curQO <= qi->idx; curQO++, nqp[nqid++] = *(curQ++)); nqp[nqid++] = qi->instr;
+	} for(;curQO < nqo; curQO++, nqp[nqid++] = *(curQ++));
+	arena qa = *getQuadArena();
+	freeArena(qa); *getQuadArena() = newQuadArena;
+	quadInsertions->used = 0; resetInsertions();
 }
 
 void compUseDef(block* b){
@@ -257,7 +287,49 @@ void computeEdges(block* b){
 	}
 }
 
-void cfgEdges(const uint32_t startQ, const uint32_t endQ){
+bva constructRefCurrent(const block* b, const uint32_t fID){
+	bva ret = {0};
+	const frameDescriptor* fd = getFrameDescriptor(fID);
+	symbol* s = fd->vars; for(uint32_t i = 0; i < fd->numVars; i++, s++){
+		SET_BIT_BVA(ret, s->vReg);
+	} return ret;
+}
+
+void fillRefBvas(block* b, const uint32_t fID){
+	bva cr = UBVA(constructRefCurrent(b, fID), b->refIn);
+	b->refOut = UBVA(b->refOut, cr); block** c = b->pBranches; for(uint32_t i = 0; i < b->numPBranches; i++, c++){
+		(*c)->refIn = UBVA((*c)->refIn, b->refOut);
+	}
+}
+
+enum insertTypes {INSERTSTORE, INSERTLOAD};
+
+void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t type){
+	switch(type){
+		case INSERTSTORE:{
+			const symbol po1 = q->o1;
+			q->o1 = newVReg(q->o1.varType.type);
+			addInsertion((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = q->o1, .o3 = (symbol){.type = refSymbol, .vReg = po1.vReg}}, qId);
+			break;
+		}
+		case INSERTLOAD:{
+			for(uint32_t b = 0; b < getTotalVRegs(); b++){
+				symbol po = {0};
+				if(CHECK_BIT_BVA(wrapBva, b)){
+					if(validType(q->o2) && q->o2.vReg == b){
+						po = q->o2; q->o2 = newVReg(q->o1.varType.type);
+					}
+					if(validType(q->o3) && q->o3.vReg == b){
+						const symbol q3o = q->o3; q->o3 = po.type ? po : newVReg(q->o3.varType.type); po = q3o;
+					}
+					addInsertion((quad){.op = LOAD, .o1 = po, .o2 = (symbol){.type = physical, .vReg = 31}, .o3 = (symbol){.type = refSymbol, .vReg = po.vReg}}, qId-1);
+				}
+			}
+			break;
+		}
+	}
+}
+void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
 	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
 	// FOR CHAITIN BRIGGS, MAKE SURE THE BACKWARDS LIVENESS ANALYSIS DEALS W LOOPS PROPERLY
@@ -267,11 +339,12 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	// to construct blocks run 3 passes
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
+	
 	const arena* quadArena = getQuadArena(); static memC* lblChunk = NULL; if(!lblChunk) lblChunk = getLastChunk(); uint32_t releaseSize = lblChunk->used;
 	const lblInd* lbls = getLblInds(); uint32_t numLabels = 0; // only this function's labels
 	for(uint32_t l = 0; l < getNumLbls(); l++) if(lbls[l].qId >= startQ && lbls[l].qId <= endQ) numLabels++;
-	sizedPool jumpIds = (sizedPool){.data = resizeChunk(lblChunk, (numLabels + endQ - startQ + 1) * sizeof(w64)), .size = 0};
-	memcpy(jumpIds.data, lbls, sizeof(lblInd) * numLabels); // careful w this i think its ok??
+	sizedPool jumpIds = (sizedPool){.data = expandChunk(&lblChunk,(endQ - startQ + 1) * sizeof(w64)), .size = 0};
+	for(uint32_t lId = 0, lc = 0; lId < numLabels; lId++, lbls++) if(lbls->qId >= startQ && lbls->qId <= endQ) ((lblInd*)jumpIds.data)[lc++] = *lbls;
 	const quad* q = (quad*)quadArena->pool + startQ; uint32_t nqb = 0; for(uint32_t qi = startQ; qi <= endQ; qi++, q++){
 		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
 			((w64*)(jumpIds.data))[numLabels + nqb] = (w64){qi, 0xFFFFFFFF};
@@ -343,8 +416,27 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	}
 
 	block** postOrderTraversal = (block**)allocateOnScratchpad(sizeof(block*) * blocksCnstr);
-	blocksTraversed = 0;
+	blocksTraversed = 0; initInsertions();
 	postOrderBlocks(postOrderTraversal, activeBlocks, blocksCnstr);
+	for(int64_t i = blocksTraversed-1; i >= 0; i--){
+		block* curBlock = postOrderTraversal[i];
+		fillRefBvas(curBlock, fID);
+	}
+	for(uint32_t i = 0; i < blocksTraversed; i++){
+		bva curRef = postOrderTraversal[i]->refIn;
+		quad* q = (quad*)(quadArena->pool) + postOrderTraversal[i]->q1; for(uint32_t qi = postOrderTraversal[i]->q1; qi <= postOrderTraversal[i]->q2; qi++, q++){
+			const bva reads = findReads(*q); const bva write = findWrite(*q);
+			if(NZBVA(reads)){
+				const bva uRefRead = ABVA(curRef, reads);
+				if(NZBVA(uRefRead)) insertWrapper(q, qi, uRefRead, INSERTLOAD);
+			}
+			if(NZBVA(write)){
+				const bva uRefWrite = ABVA(curRef, write);
+				if(NZBVA(uRefWrite)) insertWrapper(q, qi, uRefWrite, INSERTSTORE);
+			}
+			if(q->op == REF && validType(q->o2)) SET_BIT_BVA(curRef, q->o2.vReg);
+		}
+	} flushInsertions(); quadArena = getQuadArena();
 	// pass 2 intertwined with previous pass, construct jump links.
 	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
 	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
@@ -380,14 +472,13 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ){
 	} for(uint32_t i = 0; i < blocksTraversed; i++){
 		block* curBlock = postOrderTraversal[i]; computeEdges(curBlock);
 	}
+	
 
-	chaitinBriggsAlloc(startQ, endQ);
+	chaitinBriggsAlloc(startQ, endQ, fID);
 	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printfD("]\n");
 	printBlocks(blocksCnstr);
 	printfD("FRAME END\n");
-	lblChunk->used = releaseSize; // drop this function's jumpIds so the next resizeChunk lands right after lblInds again
-
-
+	lblChunk->used = releaseSize; // drop this function's jumpIds so the next expandChunk lands right after lblInds again
 }
 
 void printEdges(){
@@ -440,7 +531,7 @@ typedef struct{
 }indexedQuad;
 
 int8_t cmpIndexedQuads(void* q1, void* q2){
-	const int8_t r = ((indexedQuad*)q2)->sId - ((indexedQuad*)q1)->sId;
+	const int r = ((indexedQuad*)q2)->sId - ((indexedQuad*)q1)->sId;
 	if(r >= 0) return 1; if(!r) return 0; return -1;
 }
 
@@ -449,7 +540,7 @@ void writeQuad(arena* a, const quad q){
 }
 
 #define newStepQuad 2048
-void chaitinPass(){
+void chaitinPass(const uint32_t fID){
 	curStackPos = 0;
 	if(vRegStack.data == NULL) makevRegStack();
 	// k is max physical regs
@@ -550,17 +641,17 @@ void chaitinPass(){
 				break;
 			}
 		} freeArena((*quadArena)); *quadArena = newQuads; freeArena(addInstrs);
-		allocFunction(curFnStart, curFnEnd + quadArena->used/sizeof(quad) - oldNQ);
+		allocFunction(curFnStart, curFnEnd + quadArena->used/sizeof(quad) - oldNQ, fID);
 	}
 }
 
 void cfgPassTest(){
-	arena* quadArena = getQuadArena(); const uint32_t nq = getNumQuads();
+	arena* quadArena = getQuadArena(); const uint32_t nq = getNumQuads(); uint32_t cfID = 0;
 	int64_t qs = -1, qe = -1; uint32_t qi = 0; for(quad* q = (quad*)(quadArena->pool); qi < nq; qi++, q++){
 		if(q->op == FNCDEF) qs = qi;
 		else if(q->op == RET) qe = qi;
 		if((qs+1) && (qe+1)){
-			allocFunction(qs, qe);
+			allocFunction(qs, qe, cfID++);
 			qs = -1; qe = -1;
 		}
 	}

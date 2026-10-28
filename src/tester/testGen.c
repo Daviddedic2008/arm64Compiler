@@ -141,7 +141,7 @@ void clearTestSuites(){
     DeleteDirectoryContents(targetDir);
     if(SavePersistentInt("numTestsSaved", 0)){
         printf("Registry counter successfully reset to 0.\n");
-    }else{
+    } else{
         printf("[ERROR] Failed to reset Registry counter.\n");
     }
 

@@ -1,41 +1,8 @@
 
-FRAME [sum]
-BLOCK[0]<0, 4>LINK{3}
-USE: {}
-DEF: {0, 1, 2}
-LIVE IN: {}
-LIVE OUT: {0, 1, 2}
-BLOCK[1]<4, 5>LINK{2}
-USE: {}
-DEF: {}
-LIVE IN: {}
-LIVE OUT: {}
-BLOCK[2]<5, 8>LINK{3}
-USE: {0, 2}
-DEF: {0, 2}
-LIVE IN: {0, 1, 2}
-LIVE OUT: {0, 1, 2}
-BLOCK[3]<8, 10>LINK{2, 4}
-USE: {1}
-DEF: {}
-LIVE IN: {0, 1, 2}
-LIVE OUT: {0, 1, 2}
-BLOCK[4]<10, 11>LINK{5}
-USE: {}
-DEF: {}
-LIVE IN: {}
-LIVE OUT: {}
-BLOCK[5]<11, 12>
-USE: {}
-DEF: {}
-LIVE IN: {}
-LIVE OUT: {}
-FRAME END
-
 FRAME [main]
-BLOCK[0]<13, 21>
+BLOCK[0]<0, 24>
 USE: {}
-DEF: {3, 4, 5}
+DEF: {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}
 LIVE IN: {}
 LIVE OUT: {}
 FRAME END

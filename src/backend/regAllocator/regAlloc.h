@@ -9,7 +9,6 @@ typedef struct{
 
 void printRanges();
 void printEdges();
-void chaitinPass();
 void cfgPassTest();
 
 void printQuadsPhysical();

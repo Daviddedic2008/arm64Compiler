@@ -47,7 +47,7 @@ const char* symbolNames[] = {
 
 arena nodePool; jmp_buf compRetEnv;
 
-uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs;
+uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs, maxVRegs = 0;
 arena symbolPool;
 arena* getSymbolPool(){return &symbolPool;}
 
@@ -57,7 +57,7 @@ uint16_t loopDepth;
 
 uint32_t getNumFuncs(){return numFuncs;}
 
-uint32_t getUsedVRegs(){return numVRegs;}
+uint32_t getUsedVRegs(){return maxVRegs;}
 void deepenScope(){scopeDepth++;}
 
 void initPools(){nodePool = newArena(nodeStep * sizeof(node)); symbolPool = newArena(symbolStep * sizeof(symbol));}
@@ -270,7 +270,6 @@ node* parseSwitch(){
 }
 
 node* parseFuncDef(){
-	numFuncs++;
 	node* fdNode = addNode(funcDefNode);
 	node n = constructNode(literalNode);if(peekAdvToken(1).type == opMul){
 		const uint8_t t = eatToken().type; 
@@ -283,6 +282,7 @@ node* parseFuncDef(){
 	withinFunctionDef = false;
 	eatToken(); eatToken(); deepenScope();
 	addChildFromPtr(fdNode, parseBody());
+	numFuncs++; maxVRegs = (numVRegs > maxVRegs) ? numVRegs : maxVRegs; numVRegs = 0;
 	return fdNode;
 }
 
