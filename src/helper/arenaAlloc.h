@@ -32,6 +32,10 @@ typedef struct{
 	uint32_t numC, allocatedMem;
 }scratchpad;
 
+typedef struct{
+	uint32_t numC, used; // chunk count + used in the last chunk at save time
+}scratchState;
+
 void initializeScratchpad(const uint32_t initSz);
 void freeScratchpad();
 uint8_t* allocateOnScratchpad(const uint32_t allocSz);
@@ -40,3 +44,5 @@ uint8_t* expandChunk(memC** cp, const uint32_t addSz);
 uint8_t* writeToScratchpad(const void* data, const uint32_t wrSz);
 uint8_t* getScratchEl(const uint32_t offset);
 memC* getLastChunk();
+scratchState saveState();
+void restoreState(const scratchState s);

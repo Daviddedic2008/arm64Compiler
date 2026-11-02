@@ -10,8 +10,26 @@ set RESET=!ESC![0m
 
 set "inputFile=%~1"
 
-echo %YELLOW%--- Compiling ---%RESET%
-cmake --build --preset x64-debug 
+:: bld -d = debug, bld -r or bld = release
+set "buildPreset=x64-release"
+set "configPreset=x64-gnu-release"
+set "buildDir=build"
+if /I "%~1"=="-d" (
+    set "buildPreset=x64-debug"
+    set "configPreset=x64-gnu-debug"
+    set "buildDir=build"
+) else if not "%~1"=="" if /I not "%~1"=="-r" (
+    echo %RED%[ERROR] Unknown option "%~1". Use -d for debug, -r or nothing for release.%RESET%
+    exit /b 1
+)
+
+if not exist "!buildDir!" (
+    echo %BLUE%[INFO] Configuring !configPreset!...%RESET%
+    cmake --preset !configPreset!
+)
+
+echo %YELLOW%--- Compiling (!buildPreset!) ---%RESET%
+cmake --build --preset !buildPreset!
 
 if %errorlevel% equ 0 (
     echo.

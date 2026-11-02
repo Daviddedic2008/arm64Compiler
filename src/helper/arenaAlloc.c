@@ -92,8 +92,8 @@ memC* newChunk(const uint32_t initSz){
 	memC* m = raw_chunk_alloc(sizeof(memC) + is);
 	m->allocated = is; m->used = 0;
 	m->nextC = NULL; m->prevC = NULL;
-	m->offsetS = globalScratch.allocatedMem; m->offsetE = m->offsetS + initSz;
-	globalScratch.allocatedMem += initSz;
+	m->offsetS = globalScratch.allocatedMem; m->offsetE = m->offsetS + is;
+	globalScratch.allocatedMem += is;
 	if(globalScratch.numC){
 		m->prevC = globalScratch.endC;
 		globalScratch.endC->nextC = m;
@@ -129,7 +129,12 @@ uint8_t* allocateOnScratchpad(const uint32_t allocSz){
 		if(!ret){
 			memC* nc = newChunk(allocSz);
 			ret = nc->data; nc->used = allocSz;
-		} else{ret = ((memC*)ret)->data + lc->used; lc->offsetE += allocSz; lc->used += allocSz;}
+			globalScratch.allocatedMem += nc->allocated;
+		} else{
+			const uint32_t newSz = lc->used + allocSz;
+			globalScratch.allocatedMem += newSz - lc->allocated; lc->allocated = newSz; lc->offsetE = lc->offsetS + newSz;
+			ret = ((memC*)ret)->data + lc->used; lc->used += allocSz;
+		}
 	} return ret;
 }
 
@@ -149,13 +154,11 @@ uint8_t* writeToScratchpad(const void* data1, const uint32_t wrSz){
 uint8_t* getScratchEl(const uint32_t offset){
 	const memC* mcp = globalScratch.startC;
 	while(mcp){
-		if(mcp->offsetS <= offset && mcp->offsetE <= offset) return mcp->data + (offset - mcp->offsetS);
+		if(mcp->offsetS <= offset && offset < mcp->offsetE) return mcp->data + (offset - mcp->offsetS);
 		mcp = mcp->nextC;
 	} return NULL;
 }
 
-// appends addSz bytes to *cp and returns a pointer to them. grows (and possibly moves) the chunk if the total doesnt fit;
-// *cp is updated when it moves, so pointers into the old chunk's data are stale after a grow
 uint8_t* expandChunk(memC** cp, const uint32_t addSz){
 	memC* c = *cp;
 	const uint32_t needSz = c->used + addSz;
@@ -172,4 +175,19 @@ uint8_t* expandChunk(memC** cp, const uint32_t addSz){
 	}
 	uint8_t* ret = c->data + c->used; c->used = needSz;
 	return ret;
+}
+
+scratchState saveState(){
+	return (scratchState){.numC = globalScratch.numC, .used = globalScratch.endC->used};
+}
+
+void restoreState(const scratchState s){
+	while(globalScratch.numC > s.numC){
+		memC* lc = globalScratch.endC;
+		globalScratch.endC = lc->prevC; globalScratch.endC->nextC = NULL;
+		globalScratch.numC--;
+		raw_chunk_free(lc);
+	}
+	globalScratch.endC->used = s.used;
+	globalScratch.allocatedMem = globalScratch.endC->offsetE;
 }

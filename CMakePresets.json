@@ -11,12 +11,28 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "gcc"
       }
+    },
+    {
+      "name": "x64-gnu-release",
+      "displayName": "x64 Release (GNU C)",
+      "description": "64-bit x64 release build using GNU C compiler, -O2",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_C_FLAGS_RELEASE": "-O2 -DNDEBUG"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "x64-debug",
       "configurePreset": "x64-gnu-debug"
+    },
+    {
+      "name": "x64-release",
+      "configurePreset": "x64-gnu-release"
     }
   ]
 }

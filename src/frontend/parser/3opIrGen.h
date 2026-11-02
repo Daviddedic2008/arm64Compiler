@@ -31,6 +31,7 @@ arena* getQuadArena();
 void printSymbol(symbol s);
 bool compareSymbols(const symbol s1, const symbol s2);
 
+void printQuad(quad q);
 void printQuads();
 
 symbol newVReg(const tokenType varType);

@@ -156,16 +156,14 @@ bva findReads(const quad q){
 }
 
 bva findWrite(const quad q){
-	bva write = (bva){0}; if(isWriteQuad(q.op) && validType(q.o1)) write = UBVA(write, SBBVA(q.o1.vReg));
+	bva write = (bva){0}; if(isWriteQuad(q.op) && validType(q.o1)) write = SBBVA(q.o1.vReg);
 	return write;
 }
 
 symbol* rangeSyms;
-uint8_t* edgeSeen; uint32_t edgeSeenDim; // nvr x nvr bit matrix, dedups edges
+uint8_t* edgeSeen; uint32_t edgeSeenDim;
 uint32_t curFnStart, curFnEnd;
-
-void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID);
-void chaitinPass(const uint32_t fID);
+bool chaitinPass(const uint32_t fID);
 
 void buildRanges(const uint32_t startQ, const uint32_t endQ){
 	const uint32_t nvr = getTotalVRegs();
@@ -222,16 +220,6 @@ void newEdge(bva write, bva curLive){
 	}
 }
 
-void allocFunction(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
-	curFnStart = startQ; curFnEnd = endQ;
-	buildRanges(startQ, endQ);
-	resetEdges();
-	cfgEdges(startQ, endQ, fID);
-}
-
-void chaitinBriggsAlloc(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
-	chaitinPass(fID);
-}
 typedef struct quadInsertion{
 	quad instr;
 	uint32_t idx;
@@ -259,9 +247,10 @@ void flushInsertions(){
 	quadInsertions->used = 0; resetInsertions();
 }
 
-void compUseDef(block* b){
+void compUseDefRef(block* b){
 	b->use = (bva){0}; b->def = (bva){0};
 	const quad* q = (quad*)(getQuadArena()->pool) + b->q1; for(uint32_t qo = b->q1; qo < b->q2; qo++, q++){
+		if(q->op == REF){SET_BIT_BVA((b->refOut), (q->o2.vReg)); continue;}
 		bva reads = findReads(*q);
 		bva write = findWrite(*q);
 		b->use = UBVA(b->use, NBVA(reads, b->def)); b->def = UBVA(b->def, write);
@@ -308,7 +297,6 @@ void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t
 	switch(type){
 		case INSERTSTORE:{
 			const symbol po1 = q->o1;
-			q->o1 = newVReg(q->o1.varType.type);
 			addInsertion((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = q->o1, .o3 = (symbol){.type = refSymbol, .vReg = po1.vReg}}, qId);
 			break;
 		}
@@ -317,10 +305,13 @@ void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t
 				symbol po = {0};
 				if(CHECK_BIT_BVA(wrapBva, b)){
 					if(validType(q->o2) && q->o2.vReg == b){
-						po = q->o2; q->o2 = newVReg(q->o1.varType.type);
+						po = q->o2; 
 					}
-					if(validType(q->o3) && q->o3.vReg == b){
-						const symbol q3o = q->o3; q->o3 = po.type ? po : newVReg(q->o3.varType.type); po = q3o;
+					else if(validType(q->o3) && q->o3.vReg == b){
+						po = q->o3;
+					}
+					else if(validType(q->o1)){
+						po = q->o1;
 					}
 					addInsertion((quad){.op = LOAD, .o1 = po, .o2 = (symbol){.type = physical, .vReg = 31}, .o3 = (symbol){.type = refSymbol, .vReg = po.vReg}}, qId-1);
 				}
@@ -329,21 +320,34 @@ void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t
 		}
 	}
 }
-void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
-	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
-	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
-	// FOR CHAITIN BRIGGS, MAKE SURE THE BACKWARDS LIVENESS ANALYSIS DEALS W LOOPS PROPERLY
 
+// return postordered blocks for stuff
+enum readTypes{reconstructR, readR};
+block** constructBlocks(const uint32_t startQ, const uint32_t endQ, const uint32_t fID, const bool readType, uint32_t* const numBlocks){
 	// change quadgen to save a separate stack of labels and their related quad indices
 	// will massively speed up pass 2
 	// to construct blocks run 3 passes
 	// pass 1, look for "leader" quads, which are either labels, returns, or jumps
 	// make blocks based on sequential "leader" quads or quad0 and quadEND
-	
-	const arena* quadArena = getQuadArena(); static memC* lblChunk = NULL; if(!lblChunk) lblChunk = getLastChunk(); uint32_t releaseSize = lblChunk->used;
+
+	// pass 2 intertwined with previous pass, construct jump links.
+	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
+	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
+	// if no absolute jump is found, add next sequential block as potential branch(fallthrough)
+	// each block also has to mark what blocks potentially branch TO it, so this goes both ways
+
+	// BLOCK CONSTRUCTION DETAILS:
+	// allocate pBranches and parentBlocks in quadArena
+	// maintain 2 stacks, finished blocks(obv) and requested children blocks(store when a block needs to jump to another but the one being jumped to isnt constructed)
+	// when you start making a block, check if its qids fall within any requested blocks. if so, update both block that requested and this one with children/parent pointers.
+	// when you find a jump within your block and are looking at which block it will jump to, first call getLblQID to get quad ID.
+	// check if quad ID is in any blocks that were already made. if so, just add that as your child. if not, push ur quad id to the requested blocks along with the pointer to the block being made rn
+	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
+	static block** postOrderTraversal; if(readType == readR) return postOrderTraversal;
+	const arena* quadArena = getQuadArena();
 	const lblInd* lbls = getLblInds(); uint32_t numLabels = 0; // only this function's labels
 	for(uint32_t l = 0; l < getNumLbls(); l++) if(lbls[l].qId >= startQ && lbls[l].qId <= endQ) numLabels++;
-	sizedPool jumpIds = (sizedPool){.data = expandChunk(&lblChunk,(endQ - startQ + 1) * sizeof(w64)), .size = 0};
+	sizedPool jumpIds = (sizedPool){.data = allocateOnScratchpad((endQ - startQ + 1) * sizeof(w64)), .size = 0};
 	for(uint32_t lId = 0, lc = 0; lId < numLabels; lId++, lbls++) if(lbls->qId >= startQ && lbls->qId <= endQ) ((lblInd*)jumpIds.data)[lc++] = *lbls;
 	const quad* q = (quad*)quadArena->pool + startQ; uint32_t nqb = 0; for(uint32_t qi = startQ; qi <= endQ; qi++, q++){
 		if(q->op == JMP || q->op == JMPCND || q->op == JMPABS || q->op == RET){
@@ -361,14 +365,14 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 	const w64* w64ids = ((w64*)jumpIds.data); uint32_t blocksCnstr = 0;
 	int64_t i1 = 0, i2 = 0; do{
 		block newBlock = (block){.q1 = (i1 == i2) ? (i1--, startQ) : w64ids[i1].w1, .q2 = numQids ? w64ids[i2].w1 : endQ-1, .lId = blocksCnstr};
-		compUseDef(&newBlock);
+		compUseDefRef(&newBlock);
 		const quad endQ = ((quad*)(quadArena->pool))[newBlock.q2];
 		const uint32_t npb = 1 + endQ.op == JMPCND;
 		activeBlocks[blocksCnstr++] = newBlock;
 		i2++, i1++;
 	}while(i2 < numQids); if(blocksCnstr != expectedNB){
 		block newBlock = (block){.q1 = lastQid, .q2 = endQ-1, .lId = blocksCnstr};
-		compUseDef(&newBlock);
+		compUseDefRef(&newBlock);
 		activeBlocks[blocksCnstr++] = newBlock;
 	}
 	for(uint32_t bId = 0; bId < blocksCnstr; bId++){
@@ -414,42 +418,47 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 			}
 		}
 	}
+	postOrderTraversal = (block**)allocateOnScratchpad(sizeof(block*) * blocksCnstr); initInsertions();
+	postOrderBlocks(postOrderTraversal, activeBlocks, blocksCnstr); *numBlocks = blocksCnstr;
+	return postOrderTraversal;
+}
 
-	block** postOrderTraversal = (block**)allocateOnScratchpad(sizeof(block*) * blocksCnstr);
-	blocksTraversed = 0; initInsertions();
-	postOrderBlocks(postOrderTraversal, activeBlocks, blocksCnstr);
-	for(int64_t i = blocksTraversed-1; i >= 0; i--){
-		block* curBlock = postOrderTraversal[i];
-		fillRefBvas(curBlock, fID);
-	}
-	for(uint32_t i = 0; i < blocksTraversed; i++){
-		bva curRef = postOrderTraversal[i]->refIn;
-		quad* q = (quad*)(quadArena->pool) + postOrderTraversal[i]->q1; for(uint32_t qi = postOrderTraversal[i]->q1; qi <= postOrderTraversal[i]->q2; qi++, q++){
-			const bva reads = findReads(*q); const bva write = findWrite(*q);
-			if(NZBVA(reads)){
-				const bva uRefRead = ABVA(curRef, reads);
-				if(NZBVA(uRefRead)) insertWrapper(q, qi, uRefRead, INSERTLOAD);
+void refInsertions(block** postOrderTraversal){
+	quad* quadArena = (quad*)(getQuadArena()->pool);
+	bool refChanged = 1;
+	while(refChanged){
+		refChanged = 0;
+		for(int64_t i = blocksTraversed - 1; i >= 0; i--){
+			block* curBlock = postOrderTraversal[i];
+			const bva ti = curBlock->refIn; const bva to = curBlock->refOut;
+			curBlock->refOut = UBVA(ti, to);
+			for(uint32_t c = 0; c < curBlock->numPBranches; c++){
+				curBlock->pBranches[c]->refIn = UBVA(curBlock->refOut, curBlock->pBranches[c]->refIn);
 			}
-			if(NZBVA(write)){
-				const bva uRefWrite = ABVA(curRef, write);
-				if(NZBVA(uRefWrite)) insertWrapper(q, qi, uRefWrite, INSERTSTORE);
-			}
-			if(q->op == REF && validType(q->o2)) SET_BIT_BVA(curRef, q->o2.vReg);
+			if(!EQBVA(curBlock->refIn, ti) || !EQBVA(curBlock->refOut, to)) refChanged = 1;
 		}
-	} flushInsertions(); quadArena = getQuadArena();
-	// pass 2 intertwined with previous pass, construct jump links.
-	// for each block, if the end is a conditional jump add block it jumps to as a potential branch
-	// if last quad is an absolute jump, the block it jumps to is THE ONLY POTENTIAL BRANCH
-	// if no absolute jump is found, add next sequential block as potential branch(fallthrough)
-	// each block also has to mark what blocks potentially branch TO it, so this goes both ways
+	} 
+	block* curBlock = *postOrderTraversal; for(int64_t i = 0; i < blocksTraversed; i++, curBlock = postOrderTraversal[i]){
+		bva curRef = curBlock->refIn;
+		quad* q = quadArena + curBlock->q1; for(uint32_t qi = curBlock->q1; qi <= curBlock->q2; qi++, q++){
+			const bva reads = findReads(*q); const bva write = findWrite(*q);
+			bva bvarr = ABVA(reads, curRef);
+			bva bvawr = ABVA(write, curRef);
+			if(q->op == REF){SET_BIT_BVA(curRef, q->o2.vReg); qi++, q++; continue;}
+			if(NZBVA(bvarr)){
+				insertWrapper(q, qi-1, bvarr, INSERTLOAD);
+			}
+			if(NZBVA(bvawr)){
+				insertWrapper(q, qi, bvarr, INSERTSTORE);
+			}
+		}
+	} flushInsertions();
+}
 
-	// BLOCK CONSTRUCTION DETAILS:
-	// allocate pBranches and parentBlocks in quadArena
-	// maintain 2 stacks, finished blocks(obv) and requested children blocks(store when a block needs to jump to another but the one being jumped to isnt constructed)
-	// when you start making a block, check if its qids fall within any requested blocks. if so, update both block that requested and this one with children/parent pointers.
-	// when you find a jump within your block and are looking at which block it will jump to, first call getLblQID to get quad ID.
-	// check if quad ID is in any blocks that were already made. if so, just add that as your child. if not, push ur quad id to the requested blocks along with the pointer to the block being made rn
-	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
+bool cfgEdges(block** postOrderTraversal, const uint32_t startQ, const uint32_t endQ, const uint32_t fID, const uint32_t blocksCnstr){
+	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
+	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
+	// FOR CHAITIN BRIGGS, MAKE SURE THE BACKWARDS LIVENESS ANALYSIS DEALS W LOOPS PROPERLY
 
 	// EDGE CONSTRUCTION:
 	// make a reversed post order list of blocks(same as DFS just dont include circular connections)
@@ -458,6 +467,7 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 	// have to do multiple passes until live_in and live_out stop changing for all blocks
 	// compute live_out first, it should be SUM(live_in of potential branch nodes)
 	// compute live_in second, it should be: use | (live_out NBVA def)
+	arena* quadArena = getQuadArena();
 	bool changed = 1;
 	while(changed){
 		changed = 0;
@@ -474,11 +484,11 @@ void cfgEdges(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
 	}
 	
 
-	chaitinBriggsAlloc(startQ, endQ, fID);
+	bool s = chaitinPass(fID);
 	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printfD("]\n");
 	printBlocks(blocksCnstr);
 	printfD("FRAME END\n");
-	lblChunk->used = releaseSize; // drop this function's jumpIds so the next expandChunk lands right after lblInds again
+	return s;
 }
 
 void printEdges(){
@@ -540,7 +550,7 @@ void writeQuad(arena* a, const quad q){
 }
 
 #define newStepQuad 2048
-void chaitinPass(const uint32_t fID){
+bool chaitinPass(const uint32_t fID){
 	curStackPos = 0;
 	if(vRegStack.data == NULL) makevRegStack();
 	// k is max physical regs
@@ -641,9 +651,27 @@ void chaitinPass(const uint32_t fID){
 				break;
 			}
 		} freeArena((*quadArena)); *quadArena = newQuads; freeArena(addInstrs);
-		allocFunction(curFnStart, curFnEnd + quadArena->used/sizeof(quad) - oldNQ, fID);
+		return 1;
 	}
+	return 0;
 }
+
+void allocFunction(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
+	uint32_t numBlocks;
+	scratchState ps = saveState();
+	block** postorder = constructBlocks(startQ, endQ, fID, reconstructR, &numBlocks);
+	refInsertions(postorder);
+	bool spilled = 0; do{ continue;
+		scratchState s = saveState();
+		curFnStart = startQ; curFnEnd = endQ;
+		buildRanges(startQ, endQ);
+		resetEdges(); postorder = constructBlocks(startQ, endQ, fID, spilled ? reconstructR : readR, &numBlocks);
+		spilled = cfgEdges(postorder, startQ, endQ, fID, numBlocks);
+		restoreState(s);
+	}while(spilled);
+	restoreState(ps);
+}
+
 
 void cfgPassTest(){
 	arena* quadArena = getQuadArena(); const uint32_t nq = getNumQuads(); uint32_t cfID = 0;
@@ -656,3 +684,4 @@ void cfgPassTest(){
 		}
 	}
 }
+	
