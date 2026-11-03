@@ -38,7 +38,7 @@ void printRanges(){ const sizedPool p = ranges;
 
 bool validType(const symbol s){
 	switch(s.type){
-		case local: case arg: case temp: case global: return 1;
+		case defaultSymbol: case local: case arg: case temp: case global: return 1;
 		default: return 0;
 	}
 }
