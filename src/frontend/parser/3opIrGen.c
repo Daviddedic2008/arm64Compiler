@@ -515,8 +515,10 @@ symbol linearizeNode(const linData dat){
 				case keywordSwitch:{
 					const symbol cond = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 					node* cn = n->firstChild->sibling; int32_t minCase = INT_MAX, maxCase = INT_MIN, numCases = 0;
+					bool isDefault = 0;
 					while(cn != NULL){
 						numCases++;
+						if(cn->val.type == keywordDefault) isDefault = 1;
 						const int32_t cc = cn->firstChild->val.val;
 						if(cc < minCase) minCase = cc;
 						else if(cc > maxCase) maxCase = cc;
@@ -524,34 +526,41 @@ symbol linearizeNode(const linData dat){
 					} cn = n->firstChild->sibling; 
 					const int32_t range = maxCase - minCase; bool mapLookup = ((float)numCases / (range + 1)) >= 0.4f && range < 256;
 					if(mapLookup){
-						symbol mapOffset = newVReg(keywordIntPtr); const uint32_t defaultLabel = numLabels++;
-						const uint32_t startLbl = numLabels; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
-						for(uint32_t lbl = 0; lbl <= range; lbl++){ node* cn2 = n->firstChild->sibling; bool foundCase = 0;
-							while(cn2 != NULL){
-								if(cn2->firstChild->val.val == lbl && cn2->val.type != keywordDefault){
-									const uint32_t nr = numLabels++; foundCase = 1;
+						const uint32_t defaultLabel = numLabels;
+						emitQuad((quad){.op = CMP, .o1 = cond, .o2 = (symbol){.type = literalSymbol, .vReg = minCase}});
+						emitQuad((quad){.op = JMPCND, .o1 = (symbol){.type = label, .vReg = defaultLabel}, .o2 = (symbol){.type = flag, .vReg = flagLt}});
+						emitQuad((quad){.op = CMP, .o1 = cond, .o2 = (symbol){.type = literalSymbol, .vReg = maxCase}});
+						emitQuad((quad){.op = JMPCND, .o1 = (symbol){.type = label, .vReg = defaultLabel}, .o2 = (symbol){.type = flag, .vReg = flagGt}});
+						symbol mapOffset = newVReg(keywordIntPtr);
+						const uint32_t startLbl = defaultLabel + 1; numLabels += numCases + !isDefault; emitQuad((quad){.op = LABEL_MAP, .o1 = mapOffset, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
+						uint32_t lid = 0; for(uint32_t lbl = minCase; lbl <= maxCase; lbl++){cn = n->firstChild->sibling; bool foundCase = 0;
+							while(cn != NULL){
+								if(cn->firstChild->val.val == lbl && cn->val.type != keywordDefault){
+									const uint32_t nr = startLbl + (lid++); foundCase = 1;
 									emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = nr}, .o2 = (symbol){.type = literalSymbol, .vReg = curDescriptor->stackSize}});
 									curDescriptor->stackSize += 8;
 								}
-								cn2 = cn2->sibling;
+								cn = cn->sibling;
 							} if(!foundCase) emitQuad((quad){.op = WRITE_LABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
 							continueFor:;
-						}
+						}cn = n->firstChild->sibling;
 						const symbol tempAddr = newVReg(keywordInt);
 						emitQuad((quad){.op = MUL, .o1 = tempAddr, .o2 = (symbol){.type = literalSymbol, .vReg = 8}, cond});
 						emitQuad((quad){.op = ADD, .o1 = tempAddr, .o2 = tempAddr, .o3 = mapOffset});
 						emitQuad((quad){.op = JMPABS, .o1 = tempAddr});
-						const uint32_t svl = curEndLbl; uint32_t offsetLbl = 0;
-						curEndLbl = numLabels++; while(cn != NULL){
+						curEndLbl = numLabels++; const uint32_t svl = curEndLbl; uint32_t offsetLbl = 0;
+						while(cn != NULL){
 							if(cn->val.type == keywordDefault){
 								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
 								linearizeNode((linData){cn->firstChild, nullSymbol, 0});
 							}
 							else{
-								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLbl + offsetLbl}});
+								emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = startLbl + (offsetLbl++)}});
 								linearizeNode((linData){cn->firstChild->sibling, nullSymbol, 0});
 							}
-							cn = cn->sibling; offsetLbl++;
+							cn = cn->sibling;
+						} if(!isDefault){
+							emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = defaultLabel}});
 						}
 						emitQuad((quad){.op = SETLABEL, .o1 = (symbol){.type = label, .vReg = curEndLbl}});
 						curEndLbl = svl; 

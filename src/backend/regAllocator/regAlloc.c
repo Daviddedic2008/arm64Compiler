@@ -423,7 +423,7 @@ block** constructBlocks(const uint32_t startQ, const uint32_t endQ, const uint32
 	return postOrderTraversal;
 }
 
-void refInsertions(block** postOrderTraversal){
+void refInsertions(block** postOrderTraversal, uint32_t* const endQ){
 	quad* quadArena = (quad*)(getQuadArena()->pool);
 	bool refChanged = 1;
 	while(refChanged){
@@ -446,9 +446,11 @@ void refInsertions(block** postOrderTraversal){
 			bva bvawr = ABVA(write, curRef);
 			if(q->op == REF){SET_BIT_BVA(curRef, q->o2.vReg); qi++, q++; continue;}
 			if(NZBVA(bvarr)){
+				(*endQ)++;
 				insertWrapper(q, qi-1, bvarr, INSERTLOAD);
 			}
 			if(NZBVA(bvawr)){
+				(*endQ)++;
 				insertWrapper(q, qi, bvarr, INSERTSTORE);
 			}
 		}
@@ -626,7 +628,7 @@ bool chaitinPass(const uint32_t fID){
 	for(uint32_t qi = curFnStart; qi <= curFnEnd; qi++){
 		quad* q = (quad*)(quadArena->pool) + qi;
 		if(validType(q->o1)) q->o1.physicalReg = ((range*)(ranges.data))[q->o1.vReg].vReg->physicalReg;
-		if(validType(q->o2)) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg;
+		if(validType(q->o2) && q->op != REF) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg;
 		if(validType(q->o3)) q->o3.physicalReg = ((range*)(ranges.data))[q->o3.vReg].vReg->physicalReg;
 	}
 	if(anySpill){
@@ -660,8 +662,8 @@ void allocFunction(const uint32_t startQ, const uint32_t endQ, const uint32_t fI
 	uint32_t numBlocks;
 	scratchState ps = saveState();
 	block** postorder = constructBlocks(startQ, endQ, fID, reconstructR, &numBlocks);
-	refInsertions(postorder);
-	bool spilled = 0; do{ continue;
+	refInsertions(postorder, &endQ);
+	bool spilled = 0; do{
 		scratchState s = saveState();
 		curFnStart = startQ; curFnEnd = endQ;
 		buildRanges(startQ, endQ);

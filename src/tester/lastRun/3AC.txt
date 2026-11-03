@@ -1,8 +1,21 @@
 
 DEF main
 loc_id(0)_INT = LOADIMM #5
-loc_id(1)_PTR_INT_depth{1} = REF loc_id(0)_INT
-STORE loc_id(0)_INT -> [sp + REF[v0]]
-loc_id(0)_INT = LOADIMM #7
-loc_id(2)_INT = loc_id(0)_INT ADD #7
+CMP loc_id(0)_INT, #1
+IF f_LT JMP label_0
+CMP loc_id(0)_INT, #3
+IF f_GT JMP label_0
+loc_id(1)_PTR_INT_depth{0} = <DATA>LABEL_MAP #0
+WRITE label_1
+WRITE label_0
+WRITE label_2
+loc_id(2)_INT = #8 MUL loc_id(0)_INT
+loc_id(2)_INT = loc_id(2)_INT ADD loc_id(1)_PTR_INT_depth{0}
+JMP loc_id(2)_INT
+label_1:
+JMP_LBL label_3
+label_2:
+JMP_LBL label_3
+label_0:
+label_3:
 RET #0
