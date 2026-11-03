@@ -9,7 +9,7 @@ typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode, statementNode
 }nodeType;
 
-typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, refSymbol, temp, arg, physical, literalSymbol, strSymbol, frameSymbol}symbolType;
+typedef enum symbolType : uint8_t {invalidSymbol, global, label, flag, local, refSymbol, temp, arg, physical, literalSymbol, strSymbol, frameSymbol, defaultSymbol}symbolType;
 
 typedef enum dirtyType : bool {dirty, clean} dirtyType;
 

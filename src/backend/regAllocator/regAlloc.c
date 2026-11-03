@@ -163,7 +163,7 @@ bva findWrite(const quad q){
 symbol* rangeSyms;
 uint8_t* edgeSeen; uint32_t edgeSeenDim;
 uint32_t curFnStart, curFnEnd;
-bool chaitinPass(const uint32_t fID);
+bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq);
 
 void buildRanges(const uint32_t startQ, const uint32_t endQ){
 	const uint32_t nvr = getTotalVRegs();
@@ -221,8 +221,8 @@ void newEdge(bva write, bva curLive){
 }
 
 typedef struct quadInsertion{
-	quad instr;
 	uint32_t idx;
+	quad instr;
 }quadInsertion;
 
 memC* quadInsertions;
@@ -230,12 +230,12 @@ memC* quadInsertions;
 void initInsertions(){quadInsertions = newChunk(sizeof(quadInsertion) * getNumQuads() / 100);}
 void addInsertion(const quad q, const uint32_t idx){
 	if(q.op == INVALIDOP){quadInsertions->used = 0; return;}
-	*(quadInsertion*)expandChunk(&quadInsertions, sizeof(quadInsertion)) = (quadInsertion){q, idx};
+	*(quadInsertion*)expandChunk(&quadInsertions, sizeof(quadInsertion)) = (quadInsertion){.instr = q, .idx = idx};
 }
 #define resetInsertions() addInsertion((quad){.op = INVALIDOP}, 0)
 
-void flushInsertions(){
-	const uint32_t nqo = getNumQuads();
+void flushInsertions(uint32_t nqo){
+	insertionSort(quadInsertions->data, sizeof(quadInsertion), quadInsertions->used/sizeof(quadInsertion), NULL);
 	const uint32_t used = sizeof(quad) * nqo + quadInsertions->used/sizeof(quadInsertion) * sizeof(quad); arena newQuadArena = newArena(used); newQuadArena.used = used;
 	quad* nqp = (quad*)newQuadArena.pool; uint32_t nqid = 0;
 	const quad* curQ = (quad*)(getQuadArena()->pool); uint32_t curQO = 0; for(uint32_t ii = 0; ii < quadInsertions->used/sizeof(quadInsertion); ii++){
@@ -267,9 +267,16 @@ void postOrderBlocks(block** postOrderTraversal, block* curBlock, const uint32_t
 	postOrderTraversal[blocksTraversed++] = curBlock;
 }
 
-void computeEdges(block* b){
+void computeEdges(block* b, const bool isFirst, uint32_t* const nq){
 	bva curLive = b->liveOut;
-	const quad* q = (quad*)getQuadArena()->pool + b->q2; for(uint32_t i = 0; i <= b->q2 - b->q1; i++, q--){
+	const quad* q = (quad*)getQuadArena()->pool + b->q2; for(int64_t i = b->q2; i >= b->q1; i--, q--){
+		if(isFirst && q->op == CALL){
+			for(uint32_t v = 0; v < BITVEC_WORDS * 64; v++) if(CHECK_BIT_BVA(curLive, v)){
+				addInsertion((quad){.op = PUSH, .o1 = (symbol){.type = defaultSymbol, .vReg = v}}, i-1);
+				addInsertion((quad){.op = POP, .o1 = (symbol){.type = defaultSymbol, .vReg = v}}, i);
+				(*nq) += 2;
+			}
+		}
 		bva write = findWrite(*q); newEdge(write, curLive);
 		curLive = NBVA(curLive, write);
 		curLive = UBVA(curLive, findReads(*q));
@@ -293,7 +300,7 @@ void fillRefBvas(block* b, const uint32_t fID){
 
 enum insertTypes {INSERTSTORE, INSERTLOAD};
 
-void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t type){
+void insertWrapper(quad* q, const uint32_t qId, uint32_t* const endQ, uint32_t* const nq, const bva wrapBva, const uint8_t type){
 	switch(type){
 		case INSERTSTORE:{
 			const symbol po1 = q->o1;
@@ -310,10 +317,10 @@ void insertWrapper(quad* q, const uint32_t qId, const bva wrapBva, const uint8_t
 					else if(validType(q->o3) && q->o3.vReg == b){
 						po = q->o3;
 					}
-					else if(validType(q->o1)){
+					else if(validType(q->o1) && q->o1.vReg == b){
 						po = q->o1;
 					}
-					addInsertion((quad){.op = LOAD, .o1 = po, .o2 = (symbol){.type = physical, .vReg = 31}, .o3 = (symbol){.type = refSymbol, .vReg = po.vReg}}, qId-1);
+					if(po.type) addInsertion((quad){.op = LOAD, .o1 = po, .o2 = (symbol){.type = physical, .vReg = 31}, .o3 = (symbol){.type = refSymbol, .vReg = po.vReg}}, qId-1);
 				}
 			}
 			break;
@@ -344,7 +351,7 @@ block** constructBlocks(const uint32_t startQ, const uint32_t endQ, const uint32
 	// check if quad ID is in any blocks that were already made. if so, just add that as your child. if not, push ur quad id to the requested blocks along with the pointer to the block being made rn
 	// even if ur child is only requested, STILL ALLOCATE SPACE FOR IT!!!
 	static block** postOrderTraversal; if(readType == readR) return postOrderTraversal;
-	const arena* quadArena = getQuadArena();
+	const arena* quadArena = getQuadArena(); blocksTraversed = 0;
 	const lblInd* lbls = getLblInds(); uint32_t numLabels = 0; // only this function's labels
 	for(uint32_t l = 0; l < getNumLbls(); l++) if(lbls[l].qId >= startQ && lbls[l].qId <= endQ) numLabels++;
 	sizedPool jumpIds = (sizedPool){.data = allocateOnScratchpad((endQ - startQ + 1) * sizeof(w64)), .size = 0};
@@ -423,7 +430,7 @@ block** constructBlocks(const uint32_t startQ, const uint32_t endQ, const uint32
 	return postOrderTraversal;
 }
 
-void refInsertions(block** postOrderTraversal, uint32_t* const endQ){
+void refInsertions(block** postOrderTraversal, uint32_t* const endQ, uint32_t* const nq){
 	quad* quadArena = (quad*)(getQuadArena()->pool);
 	bool refChanged = 1;
 	while(refChanged){
@@ -446,18 +453,17 @@ void refInsertions(block** postOrderTraversal, uint32_t* const endQ){
 			bva bvawr = ABVA(write, curRef);
 			if(q->op == REF){SET_BIT_BVA(curRef, q->o2.vReg); qi++, q++; continue;}
 			if(NZBVA(bvarr)){
-				(*endQ)++;
-				insertWrapper(q, qi-1, bvarr, INSERTLOAD);
+				insertWrapper(q, qi, endQ, nq, bvarr, INSERTLOAD);
 			}
 			if(NZBVA(bvawr)){
-				(*endQ)++;
-				insertWrapper(q, qi, bvarr, INSERTSTORE);
+				(*endQ)++; (*nq)++;
+				insertWrapper(q, qi, endQ, nq, bvawr, INSERTSTORE);
 			}
 		}
-	} flushInsertions();
+	} flushInsertions(*nq);
 }
 
-bool cfgEdges(block** postOrderTraversal, const uint32_t startQ, const uint32_t endQ, const uint32_t fID, const uint32_t blocksCnstr){
+bool cfgEdges(block** postOrderTraversal, const uint32_t startQ, uint32_t* const endQ, uint32_t* const nq, const uint32_t fID, const uint32_t blocksCnstr, bool isFirst){
 	// REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR REFACTOR
 	// HAS TO RUN ON A PER-FUNCTION BASIS, THEN DESTROY CFG AFTER CHAITIN BRIGGS
 	// FOR CHAITIN BRIGGS, MAKE SURE THE BACKWARDS LIVENESS ANALYSIS DEALS W LOOPS PROPERLY
@@ -482,11 +488,10 @@ bool cfgEdges(block** postOrderTraversal, const uint32_t startQ, const uint32_t 
 			if(!EQBVA(curBlock->liveIn, ti) || !EQBVA(curBlock->liveOut, to)) changed = 1;
 		}
 	} for(uint32_t i = 0; i < blocksTraversed; i++){
-		block* curBlock = postOrderTraversal[i]; computeEdges(curBlock);
+		block* curBlock = postOrderTraversal[i]; computeEdges(curBlock, isFirst, nq);
 	}
-	
 
-	bool s = chaitinPass(fID);
+	bool s = chaitinPass(fID, endQ, nq);
 	printfD("\nFRAME ["); printSymbol(((quad*)(quadArena->pool))[startQ].o1); printfD("]\n");
 	printBlocks(blocksCnstr);
 	printfD("FRAME END\n");
@@ -552,7 +557,7 @@ void writeQuad(arena* a, const quad q){
 }
 
 #define newStepQuad 2048
-bool chaitinPass(const uint32_t fID){
+bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 	curStackPos = 0;
 	if(vRegStack.data == NULL) makevRegStack();
 	// k is max physical regs
@@ -587,7 +592,7 @@ bool chaitinPass(const uint32_t fID){
 			// insert spill code & split ranges
 			// at each spill, go through live range and keep separate pool where u store instructions to be added/replaced
 			bool foundRewrite = 0;for(uint32_t qi = rt->i1; qi <= rt->i2; qi++){
-				const quad cq = (((indexedQuad*)quadArena->pool) + qi)->q;
+				const quad cq = *(((quad*)quadArena->pool) + qi);
 				const quadCheck qc = checkQuad(cq, *rt->vReg);
 				uint32_t i1, i2; symbol newVR;
 				switch(qc){
@@ -650,6 +655,7 @@ bool chaitinPass(const uint32_t fID){
 				case rfNew:
 				writeQuad(&newQuads, ((quad*)(quadArena->pool))[pq.sId]);
 				writeQuad(&newQuads, pq.q);
+				(*nq)++; (*endQ)++;
 				break;
 			}
 		} freeArena((*quadArena)); *quadArena = newQuads; freeArena(addInstrs);
@@ -658,30 +664,34 @@ bool chaitinPass(const uint32_t fID){
 	return 0;
 }
 
-void allocFunction(const uint32_t startQ, const uint32_t endQ, const uint32_t fID){
+void allocFunction(const uint32_t startQ, uint32_t* const endQ, uint32_t* const nq, const uint32_t fID){
 	uint32_t numBlocks;
 	scratchState ps = saveState();
-	block** postorder = constructBlocks(startQ, endQ, fID, reconstructR, &numBlocks);
-	refInsertions(postorder, &endQ);
+	block** postorder = constructBlocks(startQ, *endQ, fID, reconstructR, &numBlocks);
+	refInsertions(postorder, endQ, nq);
 	bool spilled = 0; do{
 		scratchState s = saveState();
-		curFnStart = startQ; curFnEnd = endQ;
-		buildRanges(startQ, endQ);
-		resetEdges(); postorder = constructBlocks(startQ, endQ, fID, spilled ? reconstructR : readR, &numBlocks);
-		spilled = cfgEdges(postorder, startQ, endQ, fID, numBlocks);
+		curFnStart = startQ; curFnEnd = *endQ;
+		buildRanges(startQ, *endQ);
+		resetEdges(); postorder = constructBlocks(startQ, *endQ, fID, spilled ? reconstructR : readR, &numBlocks);
+		spilled = cfgEdges(postorder, startQ, endQ, nq, fID, numBlocks, !spilled);
+		flushInsertions(*nq);
 		restoreState(s);
 	}while(spilled);
+	flushInsertions(*nq);
 	restoreState(ps);
 }
 
 
 void cfgPassTest(){
-	arena* quadArena = getQuadArena(); const uint32_t nq = getNumQuads(); uint32_t cfID = 0;
+	arena* quadArena = getQuadArena(); uint32_t nq = getNumQuads(); uint32_t cfID = 0;
 	int64_t qs = -1, qe = -1; uint32_t qi = 0; for(quad* q = (quad*)(quadArena->pool); qi < nq; qi++, q++){
 		if(q->op == FNCDEF) qs = qi;
 		else if(q->op == RET) qe = qi;
 		if((qs+1) && (qe+1)){
-			allocFunction(qs, qe, cfID++);
+			allocFunction(qs, (uint32_t*)&qe, &nq, cfID++);
+			qi = qe;
+			quadArena = getQuadArena(); q = (quad*)(quadArena->pool) + qi;
 			qs = -1; qe = -1;
 		}
 	}

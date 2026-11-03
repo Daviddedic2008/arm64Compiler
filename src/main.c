@@ -39,7 +39,7 @@ int main(int argc, char* argv[]){
 		initializeScratchpad(1024);
 		arena quads = linearizeAST(&b);
 		printQuads();
-		/*
+		
 		switchFile(PREG);
 		printfCND("\n\n\x1b[36mBlocks\x1b[0m\n");
 		cfgPassTest();
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]){
 		switchFile(PAR);
 		printQuads();
 		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
-		*/
+		
 		freeScratchpad();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();
 	} else{
