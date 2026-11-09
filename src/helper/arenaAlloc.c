@@ -8,7 +8,7 @@
 arena newArena(const uint32_t sz){const uint32_t msz = sz > minSzArena ? sz : minSzArena; return (arena){.pool = malloc(msz), .allocated = msz, .used = 0};}
 
 void* writeElement(arena* a, const void* data, const uint32_t wrSz){
-	if(a->used + wrSz > a->allocated){a->pool = realloc(a->pool, a->allocated * 2);}
+	if(a->used + wrSz > a->allocated){a->allocated *= 2; a->pool = realloc(a->pool, a->allocated);}
 	if(data == NULL) return a->pool + a->used;
 	void* ptr = (char*)a->pool + a->used;
 	memcpy(ptr, data, wrSz);
@@ -17,7 +17,7 @@ void* writeElement(arena* a, const void* data, const uint32_t wrSz){
 }
 
 void* blankElement(arena* a, const uint32_t wrSz){
-	if(a->used + wrSz > a->allocated){a->pool = realloc(a->pool, a->allocated * 2);}
+	if(a->used + wrSz > a->allocated){a->allocated *= 2; a->pool = realloc(a->pool, a->allocated);}
 	void* ptr = (char*)a->pool + a->used;
 	a->used += wrSz;
 	return ptr;

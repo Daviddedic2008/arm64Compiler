@@ -4,10 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../../tester/testGen.h"
-#include "../../helper/algos.h"
-
-// regAlloc2: CFG + liveness -> ranges/edgeArena -> chaitinPass
-// edits to pasted code are tagged CHANGED
 
 #define BITVEC_WORDS 16
 
@@ -147,11 +143,18 @@ bool isWriteQuad(uint32_t op){
 	return op < STORE;
 }
 
+bool singleReadOp(const uint32_t op){
+	switch(op){
+		case RET: case PUSH: case POP: return 1;
+		default: return 0;
+	}
+}
+
 bva findReads(const quad q){
 	bva ret = (bva){0};
 	if(validType(q.o2)) SET_BIT_BVA(ret, q.o2.vReg);
 	if(validType(q.o3)) SET_BIT_BVA(ret, q.o3.vReg);
-	if(q.op == RET && validType(q.o1)) SET_BIT_BVA(ret, q.o1.vReg);
+	if(singleReadOp(q.op) && validType(q.o1)) SET_BIT_BVA(ret, q.o1.vReg);
 	return ret;
 }
 
@@ -267,14 +270,14 @@ void postOrderBlocks(block** postOrderTraversal, block* curBlock, const uint32_t
 	postOrderTraversal[blocksTraversed++] = curBlock;
 }
 
-void computeEdges(block* b, const bool isFirst, uint32_t* const nq){
+void computeEdges(block* b, const bool isFirst, uint32_t* const endQ, uint32_t* const nq){
 	bva curLive = b->liveOut;
 	const quad* q = (quad*)getQuadArena()->pool + b->q2; for(int64_t i = b->q2; i >= b->q1; i--, q--){
 		if(isFirst && q->op == CALL){
 			for(uint32_t v = 0; v < BITVEC_WORDS * 64; v++) if(CHECK_BIT_BVA(curLive, v)){
 				addInsertion((quad){.op = PUSH, .o1 = (symbol){.type = defaultSymbol, .vReg = v}}, i-1);
 				addInsertion((quad){.op = POP, .o1 = (symbol){.type = defaultSymbol, .vReg = v}}, i);
-				(*nq) += 2;
+				(*nq) += 2; (*endQ) += 2;
 			}
 		}
 		bva write = findWrite(*q); newEdge(write, curLive);
@@ -488,7 +491,7 @@ bool cfgEdges(block** postOrderTraversal, const uint32_t startQ, uint32_t* const
 			if(!EQBVA(curBlock->liveIn, ti) || !EQBVA(curBlock->liveOut, to)) changed = 1;
 		}
 	} for(uint32_t i = 0; i < blocksTraversed; i++){
-		block* curBlock = postOrderTraversal[i]; computeEdges(curBlock, isFirst, nq);
+		block* curBlock = postOrderTraversal[i]; computeEdges(curBlock, isFirst, endQ, nq);
 	}
 
 	bool s = chaitinPass(fID, endQ, nq);
@@ -597,7 +600,7 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 				uint32_t i1, i2; symbol newVR;
 				switch(qc){
 					case smblUsed:{
-						newVR = newVReg(rt->vReg->varType.type); i1 = qi; i2 = qi + 1;
+						newVR = newVReg(rt->vReg->vType); i1 = qi; i2 = qi + 1;
 						indexedQuad refactoredQuad = (indexedQuad){.q = refactorQuad(cq, *rt->vReg, newVR), .sId = qi};
 						refactoredQuad.q.refactorType = rfReplace;
 						const indexedQuad newQuad = (indexedQuad){.q = (quad){.op = LOAD, .o1 = newVR, .o2 = (symbol){.type = literal, .vReg = spStackOff}}, .sId = qi};
@@ -606,7 +609,7 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 					}
 					case smblWrite:{
 						i1 = qi; i2 = qi;
-						newVR = newVReg(rt->vReg->varType.type);
+						newVR = newVReg(rt->vReg->vType);
 						quad replaceQuad;
 						replaceQuad = refactorQuad(cq, *rt->vReg, newVR); replaceQuad.refactorType = rfReplace;
 						quad newQuad = {.op = INVALIDOP};
@@ -629,12 +632,6 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 			// at each use, ADD a load into new temporary vreg. copy spillCost. REPLACE use instruction to use new temp
 			// at each writeback, either REPLACE with a store or ADD a store if its a compound instruction that isnt MOV
 		}
-	}
-	for(uint32_t qi = curFnStart; qi <= curFnEnd; qi++){
-		quad* q = (quad*)(quadArena->pool) + qi;
-		if(validType(q->o1)) q->o1.physicalReg = ((range*)(ranges.data))[q->o1.vReg].vReg->physicalReg;
-		if(validType(q->o2) && q->op != REF) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg;
-		if(validType(q->o3)) q->o3.physicalReg = ((range*)(ranges.data))[q->o3.vReg].vReg->physicalReg;
 	}
 	if(anySpill){
 		// go through pool of ADD and REPLACE instructions. sort in order from first to last
@@ -664,6 +661,15 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 	return 0;
 }
 
+void materializeRegisters(const uint32_t curFnStart, const uint32_t curFnEnd){
+	for(uint32_t qi = curFnStart; qi <= curFnEnd; qi++){
+		quad* q = (quad*)(getQuadArena()->pool) + qi;
+		if(validType(q->o1)) q->o1.physicalReg = ((range*)(ranges.data))[q->o1.vReg].vReg->physicalReg;
+		if(validType(q->o2) && q->op != REF) q->o2.physicalReg = ((range*)(ranges.data))[q->o2.vReg].vReg->physicalReg;
+		if(validType(q->o3)) q->o3.physicalReg = ((range*)(ranges.data))[q->o3.vReg].vReg->physicalReg;
+	}
+}
+
 void allocFunction(const uint32_t startQ, uint32_t* const endQ, uint32_t* const nq, const uint32_t fID){
 	uint32_t numBlocks;
 	scratchState ps = saveState();
@@ -676,13 +682,14 @@ void allocFunction(const uint32_t startQ, uint32_t* const endQ, uint32_t* const 
 		resetEdges(); postorder = constructBlocks(startQ, *endQ, fID, spilled ? reconstructR : readR, &numBlocks);
 		spilled = cfgEdges(postorder, startQ, endQ, nq, fID, numBlocks, !spilled);
 		flushInsertions(*nq);
+		materializeRegisters(startQ, *endQ);
 		restoreState(s);
 	}while(spilled);
 	flushInsertions(*nq);
 	restoreState(ps);
 }
 
-
+// main func here
 void cfgPassTest(){
 	arena* quadArena = getQuadArena(); uint32_t nq = getNumQuads(); uint32_t cfID = 0;
 	int64_t qs = -1, qe = -1; uint32_t qi = 0; for(quad* q = (quad*)(quadArena->pool); qi < nq; qi++, q++){

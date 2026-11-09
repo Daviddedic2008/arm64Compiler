@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../../tester/testGen.h"
 
 char* srcString;
 typedef struct{
@@ -34,6 +35,7 @@ int8_t isSingleCharToken(const char c){
 		case '^': return opBitwiseXor;
 		case '~': return opBitwiseNot;
 		case ',': return opComma;
+		case '.': return opAccess;
 		case '!': return opLogicalNot;
 		case '(': return parenthesesL;
 		case ')': return parenthesesR;
@@ -49,7 +51,7 @@ typedef struct{char* str; uint8_t type;}keyData;
 
 keyData keywords[] = {
 	{"int", keywordInt}, {"char", keywordChar}, {"void", keywordVoid}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile}, {"for", keywordFor},
-	{"return", keywordReturn}, {"continue", keywordContinue}, {"break", keywordBreak}, {"case", keywordCase}, {"switch", keywordSwitch}, {"default", keywordDefault}
+	{"return", keywordReturn}, {"continue", keywordContinue}, {"break", keywordBreak}, {"case", keywordCase}, {"switch", keywordSwitch}, {"struct", keywordStruct}, {"default", keywordDefault}
 }; const uint8_t numKeywords = sizeof(keywords) / sizeof(keyData);
 
 void verifyAlphabeticalOrder(){
@@ -102,7 +104,24 @@ token getNextToken(){
 tokenArray tokenizeSource(char* src){
 	setSrc(src); token curT; uint32_t numAllocated = minTokenAmount; tokenArray ret = {.tokens = malloc(sizeof(token) * minTokenAmount), .numTokens = 0};
 	while((curT = getNextToken()).type != nullToken){
-		if(++ret.numTokens > numAllocated) ret.tokens = realloc(ret.tokens, numAllocated *= 2);
+		if(++ret.numTokens > numAllocated) ret.tokens = realloc(ret.tokens, sizeof(token) * (numAllocated *= 2));
 		ret.tokens[ret.numTokens-1] = curT;
 	} return ret;
+}
+
+extern const char* tokenNames[]; // defined in astGen.c
+
+void printToken(const token t){
+	const char* tName = (t.type <= nullToken && tokenNames[t.type]) ? tokenNames[t.type] : "UNKNOWN_TOKEN";
+	switch(t.type){
+		case literal: printfD("%s(%d)\n", tName, t.val); break;
+		case identifier: printfD("%s(%.*s)\n", tName, t.len, t.str); break;
+		default: printfD("%s\n", tName);
+	}
+}
+void printTokens(const tokenArray arr){
+	for(uint32_t i = 0; i < arr.numTokens; i++){
+		printfD("[%d] ", i);
+		const token t = arr.tokens[i];  printToken(t);
+	}
 }

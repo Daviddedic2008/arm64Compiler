@@ -13,7 +13,7 @@ const char* nodeNames[] = {
 	[conditionalNode] = "conditionalNode", [literalNode] = "literalNode", 
 	[identifierNode] = "identifierNode", [declarationNode] = "declarationNode", 
 	[castNode] = "castNode", [funcDefNode] = "funcDefNode", [funcCallNode] = "funcCallNode",
-	[statementNode] = "statementNode"
+	[statementNode] = "statementNode", [structNode] = "structNode", [structIdNode] = "structIdNode"
 };
 
 const char* tokenNames[] = {
@@ -21,12 +21,14 @@ const char* tokenNames[] = {
 	[opDecrement] = "opDecrement", [opDPlus] = "opDPlus", [opDMinus] = "opDMinus", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
     [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
     [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
+	[keywordStruct] = "keywordStruct", [keywordStructPtr] = "keywordStructPtr", [structTypeToken] = "structTypeToken",
     [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr", [opBitwiseXor] = "opBitwiseXor",
     [opShiftRight] = "opShiftRight", [opShiftLeft] = "opShiftLeft",
     [opBitwiseAnd] = "opBitwiseAnd", [opDereference] = "opDereference",
     [opReference] = "opReference", [opCmpEquals] = "opCmpEquals",
     [opCmpGreater] = "opCmpGreater", [opCmpLess] = "opCmpLess",
     [opCmpGrEq] = "opCmpGrEq", [opCmpLeEq] = "opCmpLeEq", [opCmpNe] = "opCmpNe",
+	[opAccess] = "opAccess", [opIndirectAccess] = "opIndirectAccess",
     [curlyBraceR] = "curlyBraceR", [curlyBraceL] = "curlyBraceL",
     [parenthesesL] = "parenthesesL", [parenthesesR] = "parenthesesR",
     [keywordIf] = "keywordIf", [keywordElse] = "keywordElse",
@@ -39,7 +41,7 @@ const char* tokenNames[] = {
 };
 
 const char* symbolNames[] = {
-	[arg] = "arg", [local] = "local", [global] = "global", [invalidSymbol] = "INVALID"
+	[arg] = "arg", [local] = "local", [global] = "global", [member] = "member", [invalidSymbol] = "INVALID"
 };
 
 #define nodeStep 2048
@@ -62,12 +64,12 @@ void deepenScope(){scopeDepth++;}
 
 void initPools(){nodePool = newArena(nodeStep * sizeof(node)); symbolPool = newArena(symbolStep * sizeof(symbol));}
 
-symbol constructSymbol(const token name, const token varType, const symbolType type){
-	return (symbol){.name = name, .type = type, .varType = varType, .scopeDepth = scopeDepth, .vReg = numVRegs++};
+symbol constructSymbol(const token name, const varType vt, const symbolType type){
+	symbol s = {.type = type, .vType = vt, .scopeDepth = scopeDepth, .vReg = numVRegs++}; s.vType.name = name; return s;
 }
 
-symbol* addSymbol(const token name, const token varType, const symbolType type){
-	const symbol tmp = constructSymbol(name, varType, type);
+symbol* addSymbol(const token name, const varType vt, const symbolType type){
+	const symbol tmp = constructSymbol(name, vt, type);
 	return writeElement(&symbolPool, &tmp, sizeof(symbol));
 }
 symbol* addSymbolPre(const symbol tmp){
@@ -77,7 +79,7 @@ symbol* addSymbolPre(const symbol tmp){
 symbol* getSymbol(const token t){
 	for(int32_t si = symbolPool.used/sizeof(symbol)-1; si >= 0; si--){
 		const symbol* ts = ((symbol*)symbolPool.pool) + si;
-		if(t.len == ts->name.len && !strncmp(ts->name.str, t.str, t.len)){
+		if(t.len == ts->vType.name.len && !strncmp(ts->vType.name.str, t.str, t.len)){
 			return ts;
 		}
 	}return NULL;
@@ -139,27 +141,71 @@ token singleOpMap(token t){
 	} return t;
 }
 
-node* parseArgument(){
-	token t = eatToken(); node* n;
+arena structDataFrames; uint32_t numStructs = 0;
+
+structData* getStructFrame(const token nameT){
+	uint32_t* nameSz = &(((structData*)(structDataFrames.pool))->nameSize); char** name = &(((structData*)(structDataFrames.pool))->structName);
+	structData* sFrame = (structData*)(structDataFrames.pool);
+	for(uint32_t sid = 0; sid < numStructs; sid++){
+		char* nameP = *name; const uint32_t stepSize = sFrame->memAllocated/sizeof(structData) + 1;
+		if(nameT.len == *nameSz && !strncmp(nameT.str, sFrame->structName, nameT.len)) return sFrame;
+		sFrame += stepSize; name += stepSize * sizeof(structData) / sizeof(char*);
+		nameSz += stepSize * sizeof(structData) / sizeof(uint32_t);
+	}
+	return NULL;
+}
+
+symbol* getStructMemberSymbol(const structData* sData, const token nameM){
+	symbol** s = sData->members; for(uint32_t mi = 0; mi < sData->numMembers; mi++, s++){
+		if((*s)->vType.name.len == nameM.len && !strncmp((*s)->vType.name.str, nameM.str, nameM.len)) return *s;
+	} return NULL;
+}
+
+vregType getVregType(const token t){
 	switch(t.type){
-		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, t, literalSymbol); numVRegs--; break;
+		case keywordInt: return vregInt;
+		case keywordChar: return vregChar;
+		case keywordStruct: return vregStruct;
+		case keywordVoid: return vregVoid;
+	} return vregInvalid;
+}
+
+uint32_t getSize(const varType v){
+	if(v.ptrDepth) return 8; switch(v.type){
+		case vregInt: case vregLiteral: return 4;
+		case vregChar: return 1;
+		case vregVoid: case vregInvalid: return 0;
+	}const structData* const sid = getStructFrame(v.name);
+	// sum up all member sizes
+	return sid->totalSize;
+}
+
+node* parseArgument(){
+	token t = eatToken(); node* n; bool isStruct = 0;
+	switch(t.type){
+		case literal: n = addNode(literalNode); n->symbolData = addSymbol(t, (varType){.type = vregLiteral}, literalSymbol); numVRegs--; break;
 		case identifier: switch(peekToken().type){
 			case parenthesesL: n = parseFuncCall(t); eatToken(); return n;
 			default: n = addNode(identifierNode); n->val = t; n->symbolData = getSymbol(t); n->symbolData->spillCost += (1 << (3 * loopDepth));
 		} break;
-		case keywordInt: case keywordChar:
-		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}
-		n = addNode(declarationNode);
-		n->val = t; const token st = t; t = eatToken(); const uint8_t sz = st.type == keywordChar ? 1 : 4;
-		const uint8_t glt = (scopeDepth ? local : global);
-		symbol* s = addSymbol(t, st, withinFunctionDef ? arg : glt); s->isAddr = s->type == global;
-		s->spillCost = (1 << (3 * loopDepth));
-		t.val = sz; uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->szArr = as; eatToken();}
-		s->varType = st; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
-		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
-		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
-		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
-		n = parseExpression(0); expect(parenthesesR); return n;
+		case keywordStruct:{	
+			t = eatToken(); const structData* const sFrame = getStructFrame(t); isStruct = 1; t.type = keywordStruct; case keywordInt: case keywordChar:
+			varType typeCntxt = {.type = getVregType(t), .name = t};
+			if(peekToken().type == opMul){while(peekToken().type == opMul){eatToken(); typeCntxt.ptrDepth++;}}
+			n = addNode(declarationNode);
+			n->val = t; const token st = t; t = eatToken(); typeCntxt.size = getSize(typeCntxt);
+			const uint8_t glt = (scopeDepth ? local : global);
+			symbol* s = addSymbol(t, typeCntxt, withinFunctionDef ? arg : glt); if(isStruct) s->vType.parentStructId = sFrame->structId; s->vType.isAddr = s->type == global;
+			s->spillCost = (1 << (3 * loopDepth));
+			uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->vType.szArr = as; eatToken();}
+			s->vType.type = typeCntxt.type; s->vType.ptrDepth = typeCntxt.ptrDepth; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
+		}
+		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar || tt == keywordVoid || tt == keywordStruct)){
+			token t1 = eatToken(); if(tt == keywordStruct) t1 = eatToken();
+			n = addNode(castNode); n->val = t1; n->val.val = 0;
+			while(peekToken().type == opMul){eatToken(); n->val.val++;}
+			addChildFromPtr(n, parseArgument()); return n;
+		} n = parseExpression(0); expect(parenthesesR); return n;
 		case opMinus: case opMul: case opBitwiseAnd: case opBitwiseNot: case opLogicalNot:
 		n = addNode(operatorNode); t = singleOpMap(t);
 		addChildFromPtr(n, parseExpression(110)); break;
@@ -170,6 +216,7 @@ node* parseArgument(){
 
 uint16_t getPrecedence(const uint8_t t) {
     switch(t) {
+		case opAccess: case opIndirectAccess: return 110;
         case opMul: case opDiv: return 100;
         case opPlus: case opMinus: return 90;
         case opShiftLeft: case opShiftRight: return 80;
@@ -204,6 +251,7 @@ token peekOperator(){
 			case opCmpLess: ret.type = opCmpLeEq; break;
 			case opBitwiseNot: ret.type = opCmpNe; break;
 		} break;
+		case opCmpGreater: if(ret.type == opMinus) ret.type = opIndirectAccess; break;
 		case opPlus: if(ret.type == opPlus) ret.type = opDPlus; break;
 		case opMinus: if(ret.type == opMinus) ret.type = opDMinus; break;
 		case opBitwiseAnd:
@@ -211,6 +259,37 @@ token peekOperator(){
 		case opBitwiseOr:
 		if(ret.type == opBitwiseOr) ret.type = opLogicalOr; break;
 	} if(ret.type != tc.type) eatToken(); *srcArr.tokens = ret; return ret;
+}
+
+uint32_t getSz(int type){
+	return 4;
+}
+
+#define baseNumStructs 64
+node* parseStructDef(){ numStructs++;
+	eatToken();
+	static uint32_t r; const uint32_t numStructs = structDataFrames.used/sizeof(structData);
+	if(!numStructs) structDataFrames = newArena(baseNumStructs * sizeof(structData));
+	node* defNode = addNode(structNode); uint32_t numMembers = 0; symbol* memberSz[128];
+	token name = eatToken(); uint32_t totalSz = 0; expect(curlyBraceL);
+	do{
+		node* cNode = parseExpression(0); node* const idNode = cNode->firstChild;
+		idNode->symbolData->type = member;
+		expect(endStatement); numVRegs--;
+		addChildFromPtr(defNode, cNode);
+		idNode->symbolData->localOff = totalSz;
+		memberSz[numMembers++] = idNode->symbolData;
+		const uint32_t cs = getSize(idNode->symbolData->vType); totalSz += cs; if(totalSz % cs) totalSz += cs - (totalSz % cs);
+	}while(peekToken().type != curlyBraceR); eatToken();
+	defNode->val.val = numStructs; structData newStructData = {.totalSize = totalSz}; newStructData.structId = numStructs+1;
+	newStructData.numMembers = numMembers;
+	newStructData.structName = name.str; newStructData.nameSize = name.len;
+	uint32_t szMemberAlloc = sizeof(symbol*) * numMembers; if(szMemberAlloc % sizeof(structData)) szMemberAlloc += sizeof(structData) - szMemberAlloc % sizeof(structData);
+	newStructData.memAllocated = szMemberAlloc; writeElement(&structDataFrames, &newStructData, sizeof(structData));
+	void* const mcd = blankElement(&structDataFrames, szMemberAlloc);
+	memcpy(mcd, memberSz, sizeof(symbol*) * numMembers);
+	expect(endStatement);
+	return defNode;
 }
 
 node* parseExpression(const uint16_t minPrecedence){
@@ -293,6 +372,7 @@ node* parseBody(){
 		switch(ct.type){
 			case endStatement: break;
 			case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); continue;
+			case keywordStruct: if(peekAdvToken(2).type == curlyBraceL) addChildFromPtr(ret, parseStructDef()); else addChildFromPtr(ret, parseExpression(0)); continue;
 			case keywordContinue: case keywordBreak: case keywordReturn:
 			node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
 			if(peekToken().type != endStatement) addChildFromPtr(statNode, parseExpression(0));
@@ -325,6 +405,7 @@ node* parseUntil(const uint32_t numTokens, ...){
 		switch(ct.type){
 			case endStatement: break;
 			case keywordSwitch: eatToken(); addChildFromPtr(ret, parseSwitch()); continue;
+			case keywordStruct: if(peekAdvToken(2).type == curlyBraceL) addChildFromPtr(ret, parseStructDef()); else addChildFromPtr(ret, parseExpression(0)); continue;
 			case keywordContinue: case keywordBreak: case keywordReturn:
 			node* statNode = addNode(statementNode); statNode->val = ct; eatToken();
 			if(peekToken().type != endStatement) addChildFromPtr(statNode, parseExpression(0));
@@ -358,15 +439,17 @@ void printTree(node* n, int depth) {
     const char* nName = (n->type <= statementNode) ? nodeNames[n->type] : "UNKNOWN_NODE";
     const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
 
-    printfD("[%s | %s", nName, tName);
-	if(n->type == identifierNode && n->symbolData->szArr != 0) printfD(" | %d elements", n->symbolData->szArr);
+	bool printC = 1;
+	if(n->type != structIdNode || 1) printfD("[%s | %s", nName, tName);
+	else{printfD("[%s | sID:%d",  nName, n->firstChild->val.val); printC = 0;}
+	if(n->type == identifierNode && n->symbolData->vType.szArr != 0) printfD(" | %d elements", n->symbolData->vType.szArr);
 	
 	if(n->type == identifierNode) printfD(" | %s", symbolNames[n->symbolData->type]); 
 
     printfD("]\n");
     fflush(stdout);
     node* child = n->firstChild;
-    while (child) {
+    if(printC) while(child){
         printTree(child, depth + 1);
         child = child->sibling;
     }

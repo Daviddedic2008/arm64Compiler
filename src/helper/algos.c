@@ -19,3 +19,14 @@ void insertionSortIMPL(void* data, const uint32_t elSz, const uint32_t numEl, in
 		}
 	}
 }
+
+hashmap makeMap(uint32_t (*hash)(void* const, const uint32_t), const uint32_t keySize, const uint32_t elementSize, const int64_t expectedNumElements){
+	const uint32_t entrySize = keySize + elementSize;
+	uint32_t mp2 = 1; for(; mp2 < expectedNumElements; mp2 << 1);
+	hashmap ret = (hashmap){.elements = newArena(mp2 * entrySize + mp2 * 8), .elementSize = elementSize, .hash = hash};
+	ret.hashes = ret.elements.pool, ret.offsets = ret.elements.pool + mp2 * 4, ret.values = ret.elements.pool + mp2 * 8;
+	return ret;
+}
+
+void writeIntoHashmap(hashmap* const map, void* const keyData, void* const elementData){
+}

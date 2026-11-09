@@ -23,7 +23,13 @@ add_executable(GPC
 
 set_source_files_properties(src/tester/testGen.c PROPERTIES COMPILE_DEFINITIONS "main=testGen_main")
 
-target_compile_options(${PROJECT_NAME} PRIVATE -O2)
-target_link_options(${PROJECT_NAME} PRIVATE -s)
+option(GPC_GDB_BUILD "unoptimized unstripped build for gdb (bld -g)" OFF)
+if(GPC_GDB_BUILD)
+	# -fgnu89-inline: plain `inline` funcs (compareFixed) get an out-of-line definition, otherwise -O0 fails to link
+	target_compile_options(${PROJECT_NAME} PRIVATE -O0 -g3 -fno-omit-frame-pointer -fgnu89-inline)
+else()
+	target_compile_options(${PROJECT_NAME} PRIVATE -O2)
+	target_link_options(${PROJECT_NAME} PRIVATE -s)
+endif()
 target_compile_options(${PROJECT_NAME} PRIVATE -fstack-usage)
 target_compile_options(${PROJECT_NAME} PRIVATE -w)

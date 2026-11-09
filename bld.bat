@@ -10,7 +10,7 @@ set RESET=!ESC![0m
 
 set "inputFile=%~1"
 
-:: bld -d = debug, bld -r or bld = release
+:: bld -d = debug, bld -g = gdb debug build (build-debug, run with debug.bat), bld -r or bld = release
 set "buildPreset=x64-release"
 set "configPreset=x64-gnu-release"
 set "buildDir=build"
@@ -18,8 +18,12 @@ if /I "%~1"=="-d" (
     set "buildPreset=x64-debug"
     set "configPreset=x64-gnu-debug"
     set "buildDir=build"
+) else if /I "%~1"=="-g" (
+    set "buildPreset=x64-gdb"
+    set "configPreset=x64-gnu-gdb"
+    set "buildDir=build-debug"
 ) else if not "%~1"=="" if /I not "%~1"=="-r" (
-    echo %RED%[ERROR] Unknown option "%~1". Use -d for debug, -r or nothing for release.%RESET%
+    echo %RED%[ERROR] Unknown option "%~1". Use -d for debug, -g for gdb debug, -r or nothing for release.%RESET%
     exit /b 1
 )
 

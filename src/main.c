@@ -6,6 +6,8 @@
 #include <string.h>
 
 #define printfCND(a) if(getFlush()) printf(a)
+#define BREAKEX goto end
+
 
 int main(int argc, char* argv[]){
 	if(!strcmp(argv[1], "RESET_TESTS")){
@@ -26,15 +28,21 @@ int main(int argc, char* argv[]){
 		tokenArray a = tokenizeSource(src);
 		CopyFileA(argv[1], pathSrc, FALSE);
 		printfCND("\x1b[1;32mTokenized Source\x1b[0m\n\n\n");
+		printfCND("\x1b[36mTokens\x1b[0m\n\n");
+		printTokens(a);
+		printf("\n\n");
 		node b = constructTree(a);
 		printfCND("\x1b[1;32mConstructed AST\x1b[0m\n");
 		printfCND("\n\n");
 		printfCND("\x1b[36mAST\x1b[0m\n\n");
+		
 		switchFile(PAST);
 		printTree(&b, 0);
 		printfCND("\n\n");
 		printfCND("\x1b[1;32mGenerated 3AC\x1b[0m\n\n");
 		printfCND("\x1b[36m3AC IR\x1b[0m\n\n");
+		BREAKEX;
+		
 		switchFile(P3AC);
 		initializeScratchpad(1024);
 		arena quads = linearizeAST(&b);
@@ -46,9 +54,11 @@ int main(int argc, char* argv[]){
 		rmRedundantWrites();
 		printfCND("\x1b[1;32mAllocated Registers\x1b[0m\n\n");
 		printfCND("\x1b[36mMaterialized 3AC\x1b[0m\n\n");
+		
 		switchFile(PAR);
 		printQuads();
 		printfCND("\x1b[1;32mChaitin Briggs Complete\x1b[0m\n\n");
+		end:;
 		
 		freeScratchpad();
 		if(argc > 2 && !strcmp(argv[2], "TEST")) queryStore();

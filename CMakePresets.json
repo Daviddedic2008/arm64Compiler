@@ -23,6 +23,18 @@
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_C_FLAGS_RELEASE": "-O2 -DNDEBUG"
       }
+    },
+    {
+      "name": "x64-gnu-gdb",
+      "displayName": "x64 GDB Debug (GNU C)",
+      "description": "unoptimized, unstripped build with full debug info for gdb",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "GPC_GDB_BUILD": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -33,6 +45,10 @@
     {
       "name": "x64-release",
       "configurePreset": "x64-gnu-release"
+    },
+    {
+      "name": "x64-gdb",
+      "configurePreset": "x64-gnu-gdb"
     }
   ]
 }

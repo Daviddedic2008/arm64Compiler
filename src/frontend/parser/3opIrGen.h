@@ -34,7 +34,7 @@ bool compareSymbols(const symbol s1, const symbol s2);
 void printQuad(quad q);
 void printQuads();
 
-symbol newVReg(const tokenType varType);
+symbol newVReg(const varType vType);
 
 typedef struct{
 	uint32_t qId, label;

@@ -1,10 +1,3 @@
 
-DEF helper
-RET #5
-
 DEF main
-loc_id(0)_INT = LOADIMM #7
-ALIGN
-CALL helper
-loc_id(1)_INT = loc_id(0)_INT ADD #7
 RET #0
