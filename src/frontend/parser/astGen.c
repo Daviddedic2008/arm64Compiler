@@ -261,10 +261,6 @@ token peekOperator(){
 	} if(ret.type != tc.type) eatToken(); *srcArr.tokens = ret; return ret;
 }
 
-uint32_t getSz(int type){
-	return 4;
-}
-
 #define baseNumStructs 64
 node* parseStructDef(){ numStructs++;
 	eatToken();
@@ -279,7 +275,8 @@ node* parseStructDef(){ numStructs++;
 		addChildFromPtr(defNode, cNode);
 		idNode->symbolData->localOff = totalSz;
 		memberSz[numMembers++] = idNode->symbolData;
-		const uint32_t cs = getSize(idNode->symbolData->vType); totalSz += cs; if(totalSz % cs) totalSz += cs - (totalSz % cs);
+		const uint32_t cs = idNode->symbolData->vType.size;
+		totalSz += cs; if(totalSz % cs) totalSz += cs - (totalSz % cs);
 	}while(peekToken().type != curlyBraceR); eatToken();
 	defNode->val.val = numStructs; structData newStructData = {.totalSize = totalSz}; newStructData.structId = numStructs+1;
 	newStructData.numMembers = numMembers;
