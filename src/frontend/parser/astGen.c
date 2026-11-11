@@ -49,7 +49,7 @@ const char* symbolNames[] = {
 
 arena nodePool; jmp_buf compRetEnv;
 
-uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs, maxVRegs = 0;
+uint32_t stackDepth; uint32_t scopeDepth; uint32_t numVRegs, curStructIn, maxVRegs = 0;
 arena symbolPool;
 arena* getSymbolPool(){return &symbolPool;}
 
@@ -161,6 +161,14 @@ symbol* getStructMemberSymbol(const structData* sData, const token nameM){
 	} return NULL;
 }
 
+symbol* getInstanceMember(const uint32_t parentStructId, const token nameM){
+	const uint32_t ns = symbolPool.used/sizeof(symbol); symbol* s = (symbol*)symbolPool.pool + ns; for(int64_t sId = ns; sId >= 0; sId--, s--){
+		if(s->type == member && s->vType.parentStructIn == parentStructId && nameM.len == s->vType.name.len && !strncmp(nameM.str, s->vType.name.str, s->vType.name.len)){
+			return s;
+		}
+	} return NULL;
+}
+
 vregType getVregType(const token t){
 	switch(t.type){
 		case keywordInt: return vregInt;
@@ -180,6 +188,20 @@ uint32_t getSize(const varType v){
 	return sid->totalSize;
 }
 
+void addStructMembers(structData* sFrame, const uint32_t parentIn, const bool wf){
+	symbol** sip = sFrame->members; for(uint32_t mi = 0; mi < sFrame->numMembers; mi++, sip++){
+		// recursively add members until we only have primitives
+		// add symbols for struct instances themselves too with the unique structIn
+		// make sure to track parentStructIn as well, very important
+		symbol* si = *sip;
+		switch(si->vType.type){
+			case vregStruct: symbol* ns = addSymbol(si->vType.name, si->vType, member); ns->vType.parentStructIn = parentIn; ns->vType.isAddr = wf; ns->vType.structIn = curStructIn++; 
+			addStructMembers(ns->vType.sData, ns->vType.structIn, withinFunctionDef); break;
+			default: symbol* np = addSymbol(si->vType.name, si->vType, member); np->vType.isAddr = wf; np->vType.parentStructIn = parentIn; break;
+		}
+	}
+}
+
 node* parseArgument(){
 	token t = eatToken(); node* n; bool isStruct = 0;
 	switch(t.type){
@@ -195,7 +217,10 @@ node* parseArgument(){
 			n = addNode(declarationNode);
 			n->val = t; const token st = t; t = eatToken(); typeCntxt.size = getSize(typeCntxt);
 			const uint8_t glt = (scopeDepth ? local : global);
-			symbol* s = addSymbol(t, typeCntxt, withinFunctionDef ? arg : glt); if(isStruct) s->vType.parentStructId = sFrame->structId; s->vType.isAddr = s->type == global;
+			symbol* s = addSymbol(t, typeCntxt, withinFunctionDef ? arg : glt); s->vType.sData = sFrame; if(isStruct) s->vType.parentStructIn = curStructIn++; s->vType.isAddr = s->type == global;
+			if(isStruct && !withinFunctionDef){
+				addStructMembers(sFrame, s->vType.structIn, withinFunctionDef);
+			}
 			s->spillCost = (1 << (3 * loopDepth));
 			uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->vType.szArr = as; eatToken();}
 			s->vType.type = typeCntxt.type; s->vType.ptrDepth = typeCntxt.ptrDepth; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
@@ -424,7 +449,7 @@ node* parseUntil(const uint32_t numTokens, ...){
 
 node constructTree(tokenArray arr){
 	tokensScanned = 0; stackDepth = 0; scopeDepth = 0;
-	withinFunctionDef = false; numVRegs = 0; numFuncs = 0; loopDepth = 0;
+	withinFunctionDef = false; numVRegs = 0; curStructIn = 0; numFuncs = 0; loopDepth = 0;
 	srcArr = arr; initPools();
 	node* b = parseBody();
 	return *b;

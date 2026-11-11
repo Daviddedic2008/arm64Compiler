@@ -1,3 +1,4 @@
 
 DEF main
+member_id(5)_INT = LOADIMM #5
 RET #0

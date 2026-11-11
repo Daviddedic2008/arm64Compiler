@@ -41,7 +41,6 @@ int main(int argc, char* argv[]){
 		printfCND("\n\n");
 		printfCND("\x1b[1;32mGenerated 3AC\x1b[0m\n\n");
 		printfCND("\x1b[36m3AC IR\x1b[0m\n\n");
-		BREAKEX;
 		
 		switchFile(P3AC);
 		initializeScratchpad(1024);
