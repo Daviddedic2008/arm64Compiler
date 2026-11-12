@@ -41,7 +41,7 @@ const char* tokenNames[] = {
 };
 
 const char* symbolNames[] = {
-	[arg] = "arg", [local] = "local", [global] = "global", [member] = "member", [invalidSymbol] = "INVALID"
+	[arg] = "arg", [local] = "local", [global] = "global", [member] = "member", [memberStatic] = "memberStatic", [invalidSymbol] = "INVALID"
 };
 
 #define nodeStep 2048
@@ -195,7 +195,7 @@ void addStructMembers(structData* sFrame, const uint32_t parentIn, const bool wf
 		// make sure to track parentStructIn as well, very important
 		symbol* si = *sip;
 		switch(si->vType.type){
-			case vregStruct: symbol* ns = addSymbol(si->vType.name, si->vType, member); ns->vType.parentStructIn = parentIn; ns->vType.isAddr = wf; ns->vType.structIn = curStructIn++; 
+			case vregStruct: symbol* ns = addSymbol(si->vType.name, si->vType, member); ns->vType.parentStructIn = parentIn; ns->vType.isAddr = wf; ns->vType.structIn = ++curStructIn; 
 			addStructMembers(ns->vType.sData, ns->vType.structIn, withinFunctionDef); break;
 			default: symbol* np = addSymbol(si->vType.name, si->vType, member); np->vType.isAddr = wf; np->vType.parentStructIn = parentIn; break;
 		}
@@ -217,7 +217,7 @@ node* parseArgument(){
 			n = addNode(declarationNode);
 			n->val = t; const token st = t; t = eatToken(); typeCntxt.size = getSize(typeCntxt);
 			const uint8_t glt = (scopeDepth ? local : global);
-			symbol* s = addSymbol(t, typeCntxt, withinFunctionDef ? arg : glt); s->vType.sData = sFrame; if(isStruct) s->vType.parentStructIn = curStructIn++; s->vType.isAddr = s->type == global;
+			symbol* s = addSymbol(t, typeCntxt, withinFunctionDef ? arg : glt); s->vType.sData = sFrame; if(isStruct) s->vType.structIn = ++curStructIn; s->vType.isAddr = s->type == global;
 			if(isStruct && !withinFunctionDef){
 				addStructMembers(sFrame, s->vType.structIn, withinFunctionDef);
 			}
@@ -295,7 +295,7 @@ node* parseStructDef(){ numStructs++;
 	token name = eatToken(); uint32_t totalSz = 0; expect(curlyBraceL);
 	do{
 		node* cNode = parseExpression(0); node* const idNode = cNode->firstChild;
-		idNode->symbolData->type = member;
+		idNode->symbolData->type = memberStatic;
 		expect(endStatement); numVRegs--;
 		addChildFromPtr(defNode, cNode);
 		idNode->symbolData->localOff = totalSz;

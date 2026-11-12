@@ -11,7 +11,7 @@ typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode, structNode, structIdNode, statementNode
 }nodeType;
 
-typedef enum symbolType : uint8_t {invalidSymbol, global, label, member, flag, local, refSymbol, temp, arg, physical, literalSymbol, strSymbol, frameSymbol, defaultSymbol}symbolType;
+typedef enum symbolType : uint8_t {invalidSymbol, global, label, member, memberStatic, flag, local, refSymbol, temp, arg, physical, literalSymbol, strSymbol, frameSymbol, defaultSymbol}symbolType;
 
 typedef enum dirtyType : bool {dirty, clean} dirtyType;
 

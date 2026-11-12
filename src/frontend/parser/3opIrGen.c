@@ -47,6 +47,7 @@ void printSymbol(symbol s) {
 		case defaultSymbol: if(s.physicalReg) goto printPhysical; printfD("v%d", s.vReg); break;
         case local: if(s.physicalReg) goto printPhysical; printfD("loc_id(%d)_", s.vReg); printType(s.vType); goto dop;
 		case member: if(s.physicalReg) goto printPhysical; printfD("member_id(%d)_", s.vReg); printType(s.vType); goto dop;
+		case memberStatic: if(s.physicalReg) goto printPhysical; printfD("memberStatic_id(%d)_", s.vReg); printType(s.vType); goto dop;
         case global: if(s.physicalReg) goto printPhysical; printfD("global_id(%d)_", s.vReg); printType(s.vType); goto dop;
 		case temp: if(s.physicalReg) goto printPhysical; printfD("temp_id(%d)_", s.vReg); printType(s.vType); goto dop;
         case arg: if(s.physicalReg) goto printPhysical; printfD("arg_%d_", s.vReg); printType(s.vType); goto dop;
@@ -87,8 +88,9 @@ void printQuad(quad q) {
         case FNCDEF: printfD("\nDEF "); printSymbol(q.o1); break;
         case ALIGN: printfD(op_names[q.op]); break;
         case RET: case PUSH: case POP: case CALL: case ARG: case JMP: case JMPABS: case STACK: case GLOBAL: case WRITE_LABEL: printfD("%s ", op_names[q.op]); if(q.o1.type != invalidSymbol) printSymbol(q.o1); break;
-        case NOT: case REF: case DEREF: case NEG: printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
-        default: printfD("UNKNOWN_OP(%d)", q.op); break;
+        case NOT: case DEREF: case NEG: printSymbol(q.o1); printfD(" = %s ", op_names[q.op]); printSymbol(q.o2); break;
+        case REF: if(q.o1.type){printSymbol(q.o1); printfD(" = ");} printfD("%s ", op_names[q.op]); printSymbol(q.o2); break;
+		default: printfD("UNKNOWN_OP(%d)", q.op); break;
     }
     printfD("\n");
 }
@@ -295,14 +297,22 @@ symbol linearizeNode(const linData dat){
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); bool extraStore = targetReg.vType.isAddr && targetReg.type != label;
 				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg((varType){.type = vregInt});
-					targetReg.vType = o1.vType; targetReg.vType.ptrDepth++;
-				}
+				} if(o1.vType.type != vregStruct) goto skpStructMembers; bool firstM = 0;
+				symbol* s = (symbol*)getSymbolPool()->pool; for(uint32_t si = 0; si < getSymbolPool()->used/sizeof(symbol); si++, s++){
+					if(s->vType.parentStructIn == o1.vType.structIn && s->type == member){
+						emitQuad((quad){.op = operationMap[n->val.type], .o1 = firstM ? nullSymbol : targetReg, .o2 = *s});
+						emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = *s, .o3 = (symbol){.type = refSymbol, .vReg = s->vReg}});
+						if(!firstM) firstM = 1;
+					}
+				} goto finishRef; skpStructMembers:;
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = o1, .o3 = (symbol){.type = refSymbol, .vReg = o1.vReg}});
 				frameVreg(o1); // store for later in f desc
+				
+				finishRef:;
 				if(extraStore){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});
-				}
+				} skpInitialStruct:;
 				return targetReg;
 			}
 			case opAccess:{
@@ -310,6 +320,18 @@ symbol linearizeNode(const linData dat){
 				symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				const uint32_t parentInstanceId = o1.vType.structIn;
 				return *getInstanceMember(parentInstanceId, o2.vType.name);
+			}
+			case opIndirectAccess:{
+				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+				symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
+				const uint32_t parentInstanceId = o1.vType.structIn;
+				symbol getRef = *getInstanceMember(parentInstanceId, o2.vType.name);
+				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
+					secondaryTarget = targetReg; targetReg = newVReg(getRef.vType);
+					targetReg.vType = o1.vType;
+				}
+				symbol tempAddr = (symbol){.type = local, .vReg = curTempVReg++, .vType = (varType){.type = vregStruct, .ptrDepth = 1}};
+				emitQuad((quad){.op = REF, .o1 = tempAddr, .o2 = getRef}); emitQuad((quad){.op = LOAD, .o1 = targetReg, .o2 = tempAddr});
 			}
 			case opBitwiseNot: case opNegate: case opLogicalNot:{
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0});

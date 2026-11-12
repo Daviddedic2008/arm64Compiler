@@ -1,8 +1,8 @@
 
 FRAME [main]
-BLOCK[0]<0, 2>
+BLOCK[0]<0, 7>
 USE: {}
-DEF: {5}
+DEF: {3, 4}
 LIVE IN: {}
 LIVE OUT: {}
 FRAME END
