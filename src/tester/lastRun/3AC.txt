@@ -1,9 +1,6 @@
 
 DEF main
-member_id(4)_INT = LOADIMM #5
-member_id(5)_INT = LOADIMM #6
-REF member_id(4)_INT
-STORE member_id(4)_INT -> [sp + REF[v4]]
-REF member_id(5)_INT
-STORE member_id(5)_INT -> [sp + REF[v5]]
+STACK loc_id(2)_INT[5]
+loc_id(3)_PTR_INT_depth{1}[5] = loc_id(2)_INT[5] ADD #4
+STORE #6 -> loc_id(3)_PTR_INT_depth{1}[5]
 RET #0

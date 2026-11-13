@@ -298,7 +298,7 @@ node* parseStructDef(){ numStructs++;
 		idNode->symbolData->type = memberStatic;
 		expect(endStatement); numVRegs--;
 		addChildFromPtr(defNode, cNode);
-		idNode->symbolData->localOff = totalSz;
+		idNode->symbolData->vType.localOff = totalSz;
 		memberSz[numMembers++] = idNode->symbolData;
 		const uint32_t cs = idNode->symbolData->vType.size;
 		totalSz += cs; if(totalSz % cs) totalSz += cs - (totalSz % cs);

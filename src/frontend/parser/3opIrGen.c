@@ -310,7 +310,7 @@ symbol linearizeNode(const linData dat){
 				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg((varType){.type = vregInt});
 				} if(o1.vType.type != vregStruct) goto skpStructMembers;
-				referenceStructMembers(targetReg, o1, n);
+				referenceStructMembers(targetReg, o1, n); targetReg.vType = o1.vType;
 				goto finishRef; skpStructMembers:;
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = o1, .o3 = (symbol){.type = refSymbol, .vReg = o1.vReg}});
@@ -325,19 +325,21 @@ symbol linearizeNode(const linData dat){
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 				symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				const uint32_t parentInstanceId = o1.vType.structIn;
+				printf("ID %d\n", parentInstanceId);
 				return *getInstanceMember(parentInstanceId, o2.vType.name);
 			}
 			case opIndirectAccess:{
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
 				symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
-				const uint32_t parentInstanceId = o1.vType.structIn;
-				symbol getRef = *getInstanceMember(parentInstanceId, o2.vType.name);
+				const uint32_t parentInstanceId = o1.vType.structIn; printf("ID %d\n", parentInstanceId);
+				const uint32_t memberOff = getInstanceMember(parentInstanceId, o2.vType.name)->vType.localOff;
 				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
-					secondaryTarget = targetReg; targetReg = newVReg(getRef.vType);
+					secondaryTarget = targetReg; targetReg = newVReg(o1.vType);
 					targetReg.vType = o1.vType;
-				}
+				} printf("id %.*s\n", o2.vType.name.len, o2.vType.name.str);
 				symbol tempAddr = (symbol){.type = local, .vReg = curTempVReg++, .vType = (varType){.type = vregStruct, .ptrDepth = 1}};
-				emitQuad((quad){.op = REF, .o1 = tempAddr, .o2 = getRef}); emitQuad((quad){.op = LOAD, .o1 = targetReg, .o2 = tempAddr});
+				emitQuad((quad){.op = ADD, .o1 = tempAddr, .o2 = tempAddr, .o3 = (symbol){.type = literalSymbol, .vType = (varType){.type = vregLiteral}, .vReg = memberOff}}); emitQuad((quad){.op = LOAD, .o1 = targetReg, .o2 = tempAddr});
+				return targetReg;
 			}
 			case opBitwiseNot: case opNegate: case opLogicalNot:{
 				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, n->val.type == opLogicalNot ? isConditional : 0});

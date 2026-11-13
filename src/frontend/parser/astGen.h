@@ -28,14 +28,14 @@ typedef struct structData{
 
 typedef struct varType{
 	vregType type;
-	uint32_t ptrDepth, szArr, size, parentStructIn, structIn;
+	uint32_t ptrDepth, szArr, size, parentStructIn, structIn, localOff;
 	bool isAddr, isMember;
 	token name; 
 	structData* sData;
 }varType;
 
 struct symbol{
-	symbolType type; varType vType; uint32_t localOff; union{int64_t vReg; void* frame;};
+	symbolType type; varType vType; union{int64_t vReg; void* frame;};
 	bool isDirty; uint32_t scopeDepth; uint16_t preferredReg; uint16_t spillCost; uint32_t physicalReg;
 };
 
