@@ -219,6 +219,18 @@ int evalImm(const tokenType op, const symbol o1, const symbol o2){
 	}
 }
 
+void referenceStructMembers(const symbol targetReg, const symbol o1, const node* n){
+	bool firstM = 0;
+	symbol* s = (symbol*)getSymbolPool()->pool; for(uint32_t si = 0; si < getSymbolPool()->used/sizeof(symbol); si++, s++){
+		if(s->vType.parentStructIn == o1.vType.structIn && s->type == member){
+			if(s->vType.type == vregStruct){referenceStructMembers(nullSymbol, *s, n); continue;}
+			emitQuad((quad){.op = operationMap[n->val.type], .o1 = firstM ? nullSymbol : targetReg, .o2 = *s});
+			emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = *s, .o3 = (symbol){.type = refSymbol, .vReg = s->vReg}});
+			if(!firstM) firstM = 1;
+		}
+	}
+}
+
 symbol linearizeNode(const linData dat){
 	symbol secondaryTarget = {0};
 	node* n = dat.n; symbol targetReg = dat.targetReg; bool isConditional = dat.isConditional; memType valType = dat.valType;
@@ -294,21 +306,15 @@ symbol linearizeNode(const linData dat){
 				return isConditional ? flagSmbl : targetReg;
 			}
 			case opReference:{
-				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); bool extraStore = targetReg.vType.isAddr && targetReg.type != label;
+				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); uint8_t extraStore = targetReg.vType.isAddr && targetReg.type != label;
 				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg((varType){.type = vregInt});
-				} if(o1.vType.type != vregStruct) goto skpStructMembers; bool firstM = 0;
-				symbol* s = (symbol*)getSymbolPool()->pool; for(uint32_t si = 0; si < getSymbolPool()->used/sizeof(symbol); si++, s++){
-					if(s->vType.parentStructIn == o1.vType.structIn && s->type == member){
-						emitQuad((quad){.op = operationMap[n->val.type], .o1 = firstM ? nullSymbol : targetReg, .o2 = *s});
-						emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = *s, .o3 = (symbol){.type = refSymbol, .vReg = s->vReg}});
-						if(!firstM) firstM = 1;
-					}
-				} goto finishRef; skpStructMembers:;
+				} if(o1.vType.type != vregStruct) goto skpStructMembers;
+				referenceStructMembers(targetReg, o1, n);
+				goto finishRef; skpStructMembers:;
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1});
 				emitQuad((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = o1, .o3 = (symbol){.type = refSymbol, .vReg = o1.vReg}});
 				frameVreg(o1); // store for later in f desc
-				
 				finishRef:;
 				if(extraStore){
 					emitQuad((quad){.op = STORE, .o1 = secondaryTarget, .o2 = targetReg});

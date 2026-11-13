@@ -2,7 +2,7 @@
 FRAME [main]
 BLOCK[0]<0, 7>
 USE: {}
-DEF: {3, 4}
+DEF: {4, 5}
 LIVE IN: {}
 LIVE OUT: {}
 FRAME END

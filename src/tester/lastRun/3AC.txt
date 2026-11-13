@@ -1,9 +1,9 @@
 
 DEF main
-member_id(3)_INT = LOADIMM #5
-member_id(4)_INT = LOADIMM #6
-loc_id(5)_PTR_STRUCT_depth{1} = REF member_id(3)_INT
-STORE member_id(3)_INT -> [sp + REF[v3]]
+member_id(4)_INT = LOADIMM #5
+member_id(5)_INT = LOADIMM #6
 REF member_id(4)_INT
 STORE member_id(4)_INT -> [sp + REF[v4]]
+REF member_id(5)_INT
+STORE member_id(5)_INT -> [sp + REF[v5]]
 RET #0
