@@ -56,10 +56,20 @@ arena* getSymbolPool();
 
 uint32_t getNumFuncs();
 
+uint32_t getNewStructIndex();
+
+structData* getStructFrame(const token nameT);
+
+symbol* getInstanceMember(const uint32_t parentStructId, const token nameM);
+
 uint32_t getSize(const varType v);
 
 symbol* getInstanceMember(const uint32_t parentStructId, const token nameM);
 
+void addStructMembers(structData* sFrame, const uint32_t parentIn, const bool wf);
+
 vregType getVregType(const token t);
+
+symbol* addSymbol(const token name, const varType vt, const symbolType type);
 
 symbol* addSymbolPre(const symbol tmp);

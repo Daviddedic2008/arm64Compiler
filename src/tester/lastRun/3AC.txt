@@ -1,6 +1,10 @@
 
 DEF main
-STACK loc_id(2)_INT[5]
-loc_id(3)_PTR_INT_depth{1}[5] = loc_id(2)_INT[5] ADD #4
-STORE #6 -> loc_id(3)_PTR_INT_depth{1}[5]
+loc_id(0)_STRUCT[5] = STACK #40
+loc_id(6)_INT = #0 MUL #8
+loc_id(7)_STRUCT[5] = loc_id(0)_STRUCT[5] ADD loc_id(6)_INT
+loc_id(7)_STRUCT[5] = loc_id(7)_STRUCT[5] ADD sp
+member_id(4)_INT = LOAD [loc_id(7)_STRUCT[5] + #0]
+member_id(5)_INT = LOAD [loc_id(7)_STRUCT[5] + #4]
+member_id(4)_INT = MOV #6
 RET #0

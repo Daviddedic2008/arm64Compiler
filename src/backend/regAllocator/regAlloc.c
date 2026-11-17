@@ -307,7 +307,11 @@ void insertWrapper(quad* q, const uint32_t qId, uint32_t* const endQ, uint32_t* 
 	switch(type){
 		case INSERTSTORE:{
 			const symbol po1 = q->o1;
-			addInsertion((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = q->o1, .o3 = (symbol){.type = refSymbol, .vReg = po1.vReg}}, qId);
+			for(uint32_t b = 0; b < getTotalVRegs(); b++){
+				if(CHECK_BIT_BVA(wrapBva, b)){
+					addInsertion((quad){.op = STORE, .o1 = (symbol){.type = physical, .vReg = 31}, .o2 = q->o1, .o3 = (symbol){.type = refSymbol, .vReg = b}}, qId);
+				}
+			}
 			break;
 		}
 		case INSERTLOAD:{
@@ -447,20 +451,26 @@ void refInsertions(block** postOrderTraversal, uint32_t* const endQ, uint32_t* c
 			}
 			if(!EQBVA(curBlock->refIn, ti) || !EQBVA(curBlock->refOut, to)) refChanged = 1;
 		}
-	} 
-	block* curBlock = *postOrderTraversal; for(int64_t i = 0; i < blocksTraversed; i++, curBlock = postOrderTraversal[i]){
-		bva curRef = curBlock->refIn;
+	} bva accumulateWrites = (bva){0}; 
+	block* curBlock = *postOrderTraversal; for(int64_t i = blocksTraversed-1; i >= 0; i--, curBlock = postOrderTraversal[i]){
+		bva curRef = curBlock->refIn; bva blockAcc = accumulateWrites;
 		quad* q = quadArena + curBlock->q1; for(uint32_t qi = curBlock->q1; qi <= curBlock->q2; qi++, q++){
 			const bva reads = findReads(*q); const bva write = findWrite(*q);
+			accumulateWrites = UBVA(accumulateWrites, write);
+			blockAcc = UBVA(blockAcc, write);
 			bva bvarr = ABVA(reads, curRef);
 			bva bvawr = ABVA(write, curRef);
-			if(q->op == REF){SET_BIT_BVA(curRef, q->o2.vReg); qi++, q++; continue;}
-			if(NZBVA(bvarr)){
+			if(q->op == REF){
+				SET_BIT_BVA(curRef, q->o2.vReg);
+				bvawr = ABVA(blockAcc, curRef);
+			}
+			else if(NZBVA(bvarr)){
 				insertWrapper(q, qi, endQ, nq, bvarr, INSERTLOAD);
 			}
 			if(NZBVA(bvawr)){
 				(*endQ)++; (*nq)++;
 				insertWrapper(q, qi, endQ, nq, bvawr, INSERTSTORE);
+				blockAcc = NBVA(blockAcc, write);
 			}
 		}
 	} flushInsertions(*nq);

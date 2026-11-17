@@ -160,9 +160,10 @@ symbol* getStructMemberSymbol(const structData* sData, const token nameM){
 		if((*s)->vType.name.len == nameM.len && !strncmp((*s)->vType.name.str, nameM.str, nameM.len)) return *s;
 	} return NULL;
 }
+uint32_t getNewStructIndex(){return ++curStructIn;}
 
 symbol* getInstanceMember(const uint32_t parentStructId, const token nameM){
-	const uint32_t ns = symbolPool.used/sizeof(symbol); symbol* s = (symbol*)symbolPool.pool + ns; for(int64_t sId = ns; sId >= 0; sId--, s--){
+	const uint32_t ns = symbolPool.used/sizeof(symbol); symbol* s = (symbol*)symbolPool.pool + ns; for(int64_t sId = ns-1; sId >= 0; sId--, s--){
 		if(s->type == member && s->vType.parentStructIn == parentStructId && nameM.len == s->vType.name.len && !strncmp(nameM.str, s->vType.name.str, s->vType.name.len)){
 			return s;
 		}
@@ -222,7 +223,7 @@ node* parseArgument(){
 				addStructMembers(sFrame, s->vType.structIn, withinFunctionDef);
 			}
 			s->spillCost = (1 << (3 * loopDepth));
-			uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); as = eatToken().val; s->vType.szArr = as; eatToken();}
+			uint32_t as = 0; if(peekToken().type == squareBraceL){eatToken(); s->vType.ptrDepth++; as = eatToken().val; s->vType.szArr = as; eatToken();}
 			s->vType.type = typeCntxt.type; s->vType.ptrDepth = typeCntxt.ptrDepth; addChild(n, (node){.type = identifierNode, .val = t, .symbolData = s}); return n;
 		}
 		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar || tt == keywordVoid || tt == keywordStruct)){
