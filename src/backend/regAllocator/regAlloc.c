@@ -145,7 +145,7 @@ bool isWriteQuad(uint32_t op){
 
 bool singleReadOp(const uint32_t op){
 	switch(op){
-		case RET: case PUSH: case POP: return 1;
+		case RET: case PUSH: case POP: case STORE: return 1;
 		default: return 0;
 	}
 }
@@ -613,7 +613,7 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 						newVR = newVReg(rt->vReg->vType); i1 = qi; i2 = qi + 1;
 						indexedQuad refactoredQuad = (indexedQuad){.q = refactorQuad(cq, *rt->vReg, newVR), .sId = qi};
 						refactoredQuad.q.refactorType = rfReplace;
-						const indexedQuad newQuad = (indexedQuad){.q = (quad){.op = LOAD, .o1 = newVR, .o2 = (symbol){.type = literal, .vReg = spStackOff}}, .sId = qi};
+						const indexedQuad newQuad = (indexedQuad){.q = (quad){.op = LOAD, .o1 = newVR, .o2 = (symbol){.type = literalSymbol, .vReg = spStackOff}}, .sId = qi};
 						writeElement(&addInstrs, &newQuad, sizeof(indexedQuad)); writeElement(&addInstrs, &refactoredQuad, sizeof(indexedQuad));
 						break;
 					}
@@ -622,9 +622,10 @@ bool chaitinPass(const uint32_t fID, uint32_t* const endQ, uint32_t* const nq){
 						newVR = newVReg(rt->vReg->vType);
 						quad replaceQuad;
 						replaceQuad = refactorQuad(cq, *rt->vReg, newVR); replaceQuad.refactorType = rfReplace;
-						quad newQuad = {.op = INVALIDOP};
-						if(cq.op != MOV){i2++; newQuad = (quad){.op = STORE, .o1 = (symbol){.type = literal, .vReg = spStackOff}, .o2 = newVR}; newQuad.refactorType = rfNew;}
-						writeElement(&addInstrs, &replaceQuad, sizeof(indexedQuad)); if(newQuad.op) writeElement(&addInstrs, &newQuad, sizeof(indexedQuad));
+						indexedQuad indRep = (indexedQuad){.q = replaceQuad, .sId = qi};
+						indexedQuad newQuad = (indexedQuad){.q = (quad){.op = INVALIDOP}, .sId = qi};
+						if(cq.op != MOV){i2++; newQuad.q = (quad){.op = STORE, .o1 = (symbol){.type = literal, .vReg = spStackOff}, .o2 = newVR}; newQuad.q.refactorType = rfNew;}
+						writeElement(&addInstrs, &replaceQuad, sizeof(indexedQuad)); if(newQuad.q.op) writeElement(&addInstrs, &newQuad, sizeof(indexedQuad));
 						break;
 					}
 					default: goto skipFound;

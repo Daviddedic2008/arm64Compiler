@@ -64,7 +64,7 @@ symbol* getInstanceMember(const uint32_t parentStructId, const token nameM);
 
 uint32_t getSize(const varType v);
 
-symbol* getInstanceMember(const uint32_t parentStructId, const token nameM);
+symbol* getStructMemberSymbol(const structData* sData, const token nameM);
 
 void addStructMembers(structData* sFrame, const uint32_t parentIn, const bool wf);
 

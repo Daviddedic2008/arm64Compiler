@@ -79,7 +79,7 @@ void printQuad(quad q) {
             break;
         case STORE:
             printfD("STORE "); printSymbol(q.o2); printfD(" -> "); 
-			if(q.o3.type) printfD("["); printSymbol(q.o1); if(q.o3.type){printfD(" + "); printSymbol(q.o3); printfD("]");}
+			if(q.o1.type) printfD("["); printSymbol(q.o3); if(q.o1.type){printfD(" + "); printSymbol(q.o1); printfD("]");}
             break;
         case JMPCND: printfD("IF "); printSymbol(q.o2); printfD(" JMP label_%d", q.o1.vReg); break;
         case CMP: printfD("CMP "); printSymbol(q.o1); printfD(", "); printSymbol(q.o2); break;
@@ -234,9 +234,7 @@ void referenceStructMembers(const symbol targetReg, const symbol o1, const node*
 uint32_t addStructMembersOffset(structData* sFrame, const uint32_t parentIn, const symbol baseOff, uint32_t addOff){
 	uint32_t newAddOff;
 	symbol** sip = sFrame->members; for(uint32_t mi = 0; mi < sFrame->numMembers; mi++, sip++){
-		// recursively add members until we only have primitives
-		// add symbols for struct instances themselves too with the unique structIn
-		// make sure to track parentStructIn as well, very important
+		// assuume targetreg is alr an accurate struct, reworked to make it work good
 		symbol* si = *sip; symbol* m = getInstanceMember(parentIn, si->vType.name);
 		switch(si->vType.type){
 			case vregStruct: 
@@ -264,6 +262,12 @@ symbol linearizeNode(const linData dat){
 			return (symbol){.type = flag, .vReg = flagEq};
 		}
 		else if(targetReg.vReg != -1 && targetReg.type != label){
+			if(targetReg.vType.type == vregStruct){
+				if(targetReg.vType.isAddr){ 
+					//storeMembersToOffset();
+					// store to offsets
+				} else{/*copy to other vregs*/}
+			}
 			if(targetReg.vType.isAddr){ 
 				emitQuad((quad){.op = STORE, .o3 = targetReg, .o2 = *(n->symbolData), .o1 = targetReg.type == refSymbol ? (symbol){.type = physical, .vReg = 31} : nullSymbol});
 			} else{emitQuad((quad){.op = MOV, .o1 = targetReg, .o2 = *(n->symbolData)}); *(n->symbolData) = targetReg;}
@@ -297,7 +301,7 @@ symbol linearizeNode(const linData dat){
 				symbol o1, o2;
 				goto starto1o2;
 				case opIncrement: case opDecrement: case opDPlus: case opDMinus:
-				o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); targetReg = o1;
+				o1 = linearizeNode((linData){n->firstChild, nullSymbol, .valType = (n->val.type == opIncrement || n->val.type == opDecrement) ? lvalue : rvalue}); targetReg = o1;
 				o2 = (n->val.type == opIncrement || n->val.type == opDecrement) ? linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0}) : (symbol){.type = literalSymbol, .vReg = 1};
 				n->val.type = (n->val.type == opIncrement || n->val.type == opDPlus) ? opPlus : opMinus;
 				goto skipo1o2; starto1o2:;
@@ -305,10 +309,16 @@ symbol linearizeNode(const linData dat){
 				o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				skipo1o2:;
 				skpOtherOps:;
-				if(targetReg.vReg == -1 && o1.type == literalSymbol && o2.type == literalSymbol) return (symbol){.type = literalSymbol, .vReg = evalImm(n->val.type, o1, o2)};
-				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){secondaryTarget = targetReg; targetReg.vType.ptrDepth -= (targetReg.vType.ptrDepth != 0); targetReg = newVReg(targetReg.vType);}
+				if(targetReg.vType.isAddr && targetReg.type != label){secondaryTarget = targetReg; targetReg.vType.ptrDepth -= (targetReg.vType.ptrDepth != 0); targetReg = newVReg(targetReg.vType);}
+				if(o1.type == literalSymbol && o2.type == literalSymbol){
+					const int64_t immR = evalImm(n->val.type, o1, o2); if(targetReg.vReg == -1) return (symbol){.type = literalSymbol, .vReg = immR};
+					emitQuad((quad){.op = LOADIMM, .o1 = targetReg, .o2 = (symbol){.type = literalSymbol, .vReg = immR}});
+					goto skipOriginalOp;
+				}
+				if(targetReg.vReg == -1 && targetReg.type != label){secondaryTarget = targetReg; targetReg.vType.ptrDepth -= (targetReg.vType.ptrDepth != 0); targetReg = newVReg(targetReg.vType);}
 				targetReg.vType = combineTypes(o1.vType, o2.vType);
 				emitQuad((quad){.op = operationMap[n->val.type], .o1 = targetReg, .o2 = o1, .o3 = o2});
+				skipOriginalOp:;
 				if(isConditional){
 					emitQuad((quad){.op = CMP, .o1 = targetReg, .o2 = (symbol){.type = literalSymbol, .vReg = 0}});
 					return (symbol){.type = flag, .vReg = flagEq};
@@ -331,7 +341,7 @@ symbol linearizeNode(const linData dat){
 				return isConditional ? flagSmbl : targetReg;
 			}
 			case opReference:{
-				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0}); uint8_t extraStore = targetReg.vType.isAddr && targetReg.type != label;
+				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, lvalue}); uint8_t extraStore = targetReg.vType.isAddr && targetReg.type != label;
 				if((targetReg.vReg == -1 || targetReg.vType.isAddr) && targetReg.type != label){
 					secondaryTarget = targetReg; targetReg = newVReg((varType){.type = vregInt});
 				} if(o1.vType.type != vregStruct) goto skpStructMembers;
@@ -347,9 +357,15 @@ symbol linearizeNode(const linData dat){
 				return targetReg;
 			}
 			case opAccess:{
-				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, 0});
+				symbol o1 = linearizeNode((linData){n->firstChild, nullSymbol, .valType = dat.valType});
 				symbol o2 = linearizeNode((linData){n->firstChild->sibling, nullSymbol, 0});
 				const uint32_t parentInstanceId = o1.vType.structIn;
+				if(dat.valType == lvalue){
+					symbol vr = newVReg((varType){.type = vregStruct, .ptrDepth = 1});
+					vr.vType.isAddr = dat.valType == lvalue;
+					emitQuad((quad){.op = ADD, .o1 = vr, .o2 = o1, .o3 = (symbol){.type = literalSymbol, .vReg = getStructMemberSymbol(o1.vType.sData, o2.vType.name)->vType.localOff}});
+					return vr;
+				}
 				return *getInstanceMember(parentInstanceId, o2.vType.name);
 			}
 			case opIndirectAccess:{
@@ -405,12 +421,15 @@ symbol linearizeNode(const linData dat){
 				symbol elSmbl = o1; elSmbl.vType.ptrDepth--;
 				const symbol o2 = linearizeNode((linData){n->lastChild, nullSymbol, 0});
 				symbol baseOffset; const uint32_t sz = getSize(elSmbl.vType); if(sz != 1){
-					baseOffset = newVReg((varType){.type = vregInt}); 
-					emitQuad((quad){.op = MUL, .o1 = baseOffset, .o2 = o2, .o3 = (symbol){.type = literalSymbol, .vReg = sz}});
+					switch(o2.type){
+						case literalSymbol: baseOffset = (symbol){.type = literalSymbol, .vReg = o2.vReg * sz}; break; 
+						default: baseOffset = newVReg((varType){.type = vregInt}); 
+						emitQuad((quad){.op = MUL, .o1 = baseOffset, .o2 = o2, .o3 = (symbol){.type = literalSymbol, .vReg = sz}});
+					}
 				} else baseOffset = o2;
 
 				symbol elementAddr = newVReg(o1.vType);
-				emitQuad((quad){.op = ADD, .o1 = elementAddr, .o2 = o1, .o3 = baseOffset});
+				emitQuad((quad){.op = ADD, .o1 = elementAddr, .o2 = o1.vType.szArr ? (symbol){.type = refSymbol, .vType = o1.vType, .vReg = o1.vReg} : o1, .o3 = baseOffset});
 				if(valType == lvalue){
 					elementAddr.vType.isAddr = true;
 					return elementAddr;
@@ -539,7 +558,7 @@ symbol linearizeNode(const linData dat){
 				const uint32_t curStackOff = curDescriptor->stackSize;
 				const uint32_t allocArrSz = n->firstChild->symbolData->vType.szArr * n->firstChild->symbolData->vType.sData->totalSize;
 				if(n->firstChild->symbolData->type != global) curDescriptor->stackSize += allocArrSz;
-				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = *(n->firstChild->symbolData), .o2 = (symbol){.type = literalSymbol, .vReg = curStackOff}, .o2 = (symbol){.type = literalSymbol, .vReg = allocArrSz}});
+				emitQuad((quad){.op = n->firstChild->symbolData->type == global ? GLOBAL : STACK, .o1 = (symbol){.type = refSymbol, .vType = n->firstChild->symbolData->vType, .vReg = n->firstChild->symbolData->vReg}, .o2 = (symbol){.type = literalSymbol, .vReg = curStackOff}, .o2 = (symbol){.type = literalSymbol, .vReg = allocArrSz}});
 			} addVReg(*(n->firstChild->symbolData));
 			return *(n->firstChild->symbolData);
 		}
@@ -730,10 +749,15 @@ void constantFoldingPass(){
 		if(qi) switch(q->op){
 			case ADD: case SUB:{
 				const bool isChain = compareSymbols(q->o2, prevOp->o1) ? q->o3.type == literalSymbol : (compareSymbols(q->o3, prevOp->o1) ? q->o2.type == literalSymbol : 0);
-				if((prevOp->op == ADD || prevOp->op == SUB) && isChain && (prevOp->o2.type == literalSymbol || prevOp->o3.type == literalSymbol)){
-					prevOp->skippable = 1; symbol* newOpReg; curTempVReg--;
+				if(isChain && (prevOp->o2.type == literalSymbol || prevOp->o3.type == literalSymbol)){
+					symbol* newOpReg;
 					symbol* const literalC = q->o2.type == literalSymbol ? (newOpReg = &q->o3, &q->o2) : (newOpReg = &q->o2, &q->o3);
-					literalC->vReg += (q->op == SUB ? -1 : 1) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
+					if((prevOp->op == ADD || prevOp->op == SUB)){
+						literalC->vReg += (prevOp->op == SUB ? -1 : 1) * ((prevOp->o2.type == literalSymbol) ? (*newOpReg = prevOp->o3, prevOp->o2.vReg) : (*newOpReg = prevOp->o2, prevOp->o3.vReg));
+					}else if(prevOp->o2.type == literalSymbol && prevOp->o3.type == invalidSymbol){
+						const uint32_t lvc = literalC->vReg;
+						*q = (quad){.op = LOADIMM, .o1 = q->o1, .o2 = (symbol){.type = literalSymbol, .vReg = lvc + prevOp->o2.vReg}};
+					}
 				}
 				break;
 			}
